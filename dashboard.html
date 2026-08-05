@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#06060f">
+<title>Geometry Dash</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='16' y='16' width='68' height='68' rx='14' fill='%2300d4ff'/%3E%3Crect x='33' y='33' width='34' height='34' rx='7' fill='%23f5d300'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="theme.css">
+<style>
+  /* PERFORMANCE: solid backgrounds, no backdrop-filter blur, no mask repaints -> smooth scroll */
+  body{background:radial-gradient(circle at 16% 14%,#0e1830,transparent 40%),radial-gradient(circle at 86% 86%,#1a0a26,transparent 42%),#070710;color:var(--text)}
+  *{scrollbar-width:thin;scrollbar-color:var(--cyan) transparent}
+  ::-webkit-scrollbar{width:7px;height:7px}::-webkit-scrollbar-thumb{background:linear-gradient(var(--cyan),var(--pink));border-radius:9px}
+  .app{max-width:1100px;margin:0 auto;padding:max(4%,env(safe-area-inset-top)) 4% 8%}
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:3%;margin-bottom:4%;position:sticky;top:0;z-index:30;background:linear-gradient(#070710ee,#070710c0);padding:3% 0;backdrop-filter:none}
+  .topbar .brand{font-size:clamp(1.1rem,4.5vw,1.7rem);font-weight:900}
+  .topbar .brand .a{color:var(--cyan)}.topbar .brand .b{color:var(--gold)}
+  .tbtns{display:flex;align-items:center;gap:10px}
+  .icon-btn{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:1px solid var(--glass-border);background:rgba(255,255,255,.05);cursor:pointer;color:var(--text);transition:.18s;position:relative;flex-shrink:0}
+  .icon-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+  .icon-btn svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .badge-dot{position:absolute;top:7px;right:7px;width:9px;height:9px;border-radius:50%;background:var(--red);box-shadow:0 0 8px var(--red);display:none}
+  .badge-dot.show{display:block}
+  .avatar{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;color:#04121a;cursor:pointer;border:2px solid var(--glass-border);transition:.18s;flex-shrink:0;font-size:1.1rem}
+  .avatar:hover{transform:scale(1.06)}
+  .av{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;font-weight:900;color:#04121a;flex-shrink:0;line-height:1}
+  /* chooser */
+  .chooser{display:flex;gap:1.5%;background:rgba(0,0,0,.32);border:1px solid var(--glass-border);border-radius:999px;padding:1.2%;margin-bottom:5%}
+  .chooser .c{flex:1;text-align:center;padding:2.8% 0;border-radius:999px;cursor:pointer;font-weight:800;letter-spacing:.06em;text-transform:uppercase;font-size:var(--fs-small);color:var(--text-dim);transition:.25s;user-select:none}
+  .chooser .c.active{background:linear-gradient(90deg,var(--cyan),var(--pink));color:#04121a}
+  .view{display:none;animation:fadeIn .3s ease both}
+  .view.active{display:block}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  /* dashboard */
+  .hero{text-align:center;padding:5% 2% 3%}
+  .hero .gd{font-size:clamp(1.7rem,5vw,2.3rem);font-weight:900;line-height:1}
+  .hero .gd .a{color:var(--cyan)}.hero .gd .b{color:var(--gold)}
+  .play{margin:4% auto 2%;display:inline-flex}
+  .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(40%,1fr));gap:3%;margin:5% 0}
+  .stat{padding:6% 5%;text-align:center;border-radius:clamp(1rem,3vw,1.4rem)}
+  .stat .ico{font-size:clamp(1.1rem,3.5vw,1.4rem);display:block;margin-bottom:3%}
+  .stat .num{font-size:clamp(1.3rem,4.5vw,1.8rem);font-weight:900;font-variant-numeric:tabular-nums;line-height:1}
+  .stat .lbl{font-size:var(--fs-small);letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);margin-top:3%}
+  .stat--cyan .num{color:var(--cyan)}.stat--gold .num{color:var(--gold)}.stat--green .num{color:var(--green)}
+  .sec-h{display:flex;align-items:center;gap:3%;margin:6% 0 3%}
+  .sec-h h2{font-size:var(--fs-h2);font-weight:900}.sec-h .ln{flex:1;height:1px;background:linear-gradient(90deg,var(--glass-border),transparent)}
+  .table-shell{border-radius:clamp(1rem,3vw,1.4rem);overflow:hidden}
+  .lv-table{width:100%;border-collapse:collapse}
+  .lv-table th{font-size:var(--fs-small);letter-spacing:.06em;text-transform:uppercase;color:var(--text-dim);text-align:left;padding:3.5% 3%;background:rgba(0,212,255,.06)}
+  .lv-table td{padding:3% 3%;border-top:1px solid rgba(255,255,255,.06);font-size:var(--fs-body)}
+  .lv-table tbody tr:hover{background:rgba(255,255,255,.04)}
+  .mini-bar{width:min(110px,38vw);height:6px;background:rgba(255,255,255,.1);border-radius:999px;overflow:hidden;margin-top:6%}
+  .mini-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--cyan),var(--green))}
+  .zero{opacity:.35}
+  @media(max-width:680px){.lv-table thead{display:none}.lv-table,.lv-table tbody,.lv-table tr,.lv-table td{display:block;width:100%}.lv-table tr{margin-bottom:3%;padding:4%;border-radius:1rem;background:rgba(255,255,255,.04);border:1px solid var(--glass-border)}.lv-table td{display:flex;justify-content:space-between;gap:4%;padding:2.5% 0;border:none}.lv-table td::before{content:attr(data-label);color:var(--text-dim);font-size:var(--fs-small);text-transform:uppercase}.lv-table td:first-child{display:none}}
+  /* leaderboard */
+  .lb-scopes{display:flex;gap:1.5%;overflow-x:auto;padding-bottom:3%;margin-bottom:2%;-webkit-overflow-scrolling:touch}
+  .lb-scopes .sc{white-space:nowrap;padding:1.5% 3.5%;border-radius:999px;border:1px solid var(--glass-border);background:rgba(255,255,255,.04);cursor:pointer;font-size:var(--fs-small);font-weight:700;color:var(--text-dim);transition:.2s}
+  .lb-scopes .sc.active{border-color:var(--cyan);color:var(--cyan);background:rgba(0,212,255,.08)}
+  .lb-list{display:flex;flex-direction:column;gap:2%}
+  .lb-row{display:flex;align-items:center;gap:3.5%;padding:3.5% 4%;border-radius:clamp(.9rem,2.6vw,1.1rem);cursor:pointer;transition:transform .15s}
+  .lb-row:hover{transform:translateX(1%)}
+  .lb-row .rk{font-weight:900;font-size:clamp(1rem,4.5vw,1.3rem);width:2.6em;text-align:center;flex-shrink:0}
+  .lb-row .av{width:38px;height:38px;font-size:.95rem}
+  .lb-row .nm{flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lb-row .val{font-weight:900;color:var(--cyan);font-variant-numeric:tabular-nums}
+  .lb-row.r1{border-color:var(--gold);background:rgba(245,211,0,.08)}.lb-row.r1 .rk{color:var(--gold)}
+  .lb-row.r2{border-color:rgba(255,255,255,.4);background:rgba(255,255,255,.06)}
+  .lb-row.r3{border-color:var(--pink);background:rgba(255,0,228,.07)}.lb-row.r3 .rk{color:var(--pink)}
+  .lb-row.me{outline:2px solid var(--cyan);outline-offset:-2px}
+  .lb-pin{position:sticky;bottom:1%;margin-top:3%;border-color:var(--cyan);background:rgba(0,212,255,.14)}
+  .empty-note{text-align:center;color:var(--text-faint);padding:7% 5%}
+  /* chat */
+  .chat-wrap{display:flex;gap:3%;min-height:58vh}
+  .chat-friends{width:240px;flex-shrink:0;border:1px solid var(--glass-border);border-radius:1rem;background:rgba(0,0,0,.2);overflow:hidden;display:flex;flex-direction:column}
+  .chat-friends .fh{padding:4%;font-weight:800;letter-spacing:.04em;text-transform:uppercase;font-size:var(--fs-small);color:var(--text-dim);border-bottom:1px solid var(--glass-border);display:flex;justify-content:space-between;align-items:center}
+  .chat-friends .fl{overflow-y:auto;flex:1}
+  .fl-item{display:flex;align-items:center;gap:3%;padding:3.5% 4%;cursor:pointer;transition:.15s}
+  .fl-item:hover{background:rgba(255,255,255,.05)}.fl-item.active{background:rgba(0,212,255,.1)}
+  .fl-item .av{width:34px;height:34px;font-size:.85rem}
+  .fl-item .meta{flex:1;overflow:hidden}.fl-item .nm{font-weight:700;font-size:var(--fs-small);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .fl-item .st{font-size:.72rem;color:var(--text-faint)}.st.on{color:var(--green)}.st.play{color:var(--gold)}
+  .add-btn{cursor:pointer;color:var(--cyan);font-size:1.3rem;border:none;background:none}
+  .conv{flex:1;min-width:0;border:1px solid var(--glass-border);border-radius:1rem;background:rgba(0,0,0,.22);display:flex;flex-direction:column;overflow:hidden}
+  .conv .ch{padding:3% 4%;border-bottom:1px solid var(--glass-border);display:flex;align-items:center;gap:3%;background:rgba(0,0,0,.2);min-height:54px}
+  .conv .ch .av{width:36px;height:36px;font-size:.9rem}
+  .conv .ch .info{flex:1;min-width:0}.conv .ch .nm{font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.conv .ch .ls{font-size:.72rem;color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .back{display:none;cursor:pointer;color:var(--cyan);background:none;border:none;font-size:1.4rem;padding:0 4px}
+  .msgs{flex:1;overflow-y:auto;padding:4%;display:flex;flex-direction:column;gap:2.5%;min-height:180px;-webkit-overflow-scrolling:touch}
+  .mb{max-width:74%;padding:2.5% 4%;border-radius:14px;font-size:var(--fs-body);word-wrap:break-word;white-space:pre-wrap;line-height:1.4}
+  .mb.in{align-self:flex-start;background:rgba(255,255,255,.09);border-bottom-left-radius:4px}
+  .mb.out{align-self:flex-end;background:linear-gradient(135deg,var(--cyan),#0099cc);color:#04121a;border-bottom-right-radius:4px;font-weight:500}
+  .mb .t{display:block;font-size:.66rem;opacity:.6;margin-top:3%;text-align:right}
+  .conv .composer{display:flex;gap:2%;padding:3%;border-top:1px solid var(--glass-border);align-items:flex-end}
+  .conv .composer textarea{flex:1;resize:none;height:42px;max-height:120px;background:rgba(0,0,0,.35);border:1px solid var(--glass-border);border-radius:12px;color:var(--text);padding:2.5% 3%;font:inherit;user-select:text;-webkit-user-select:text}
+  .conv .composer button{border:none;background:linear-gradient(135deg,var(--cyan),var(--pink));color:#04121a;width:46px;height:42px;border-radius:12px;cursor:pointer;font-weight:900;font-size:1.1rem;flex-shrink:0}
+  .chat-empty{align-items:center;justify-content:center;color:var(--text-faint);text-align:center;padding:10%;display:flex;flex-direction:column}
+  @media(max-width:680px){
+    .chat-wrap{flex-direction:column;min-height:70vh}
+    .chat-friends{width:auto;max-height:30vh}
+    .conv.show-list .back{display:block}
+    .chat-friends.hide-mobile{display:none}
+    .conv.hide-mobile{display:none}
+  }
+  /* drawer + modal */
+  .drawer{position:fixed;top:0;left:0;bottom:0;width:min(82%,300px);background:#0a081afc;border-right:1px solid var(--glass-border);z-index:80;transform:translateX(-105%);transition:transform .3s;padding:6% 5%;display:flex;flex-direction:column;gap:2%}
+  .drawer.open{transform:none}
+  .drawer .prof{display:flex;align-items:center;gap:4%;margin-bottom:6%}
+  .drawer .prof .av{width:52px;height:52px;font-size:1.4rem}
+  .drawer .pn{font-weight:800}.drawer .pu{font-size:var(--fs-small);color:var(--text-dim)}
+  .drawer .di{display:flex;align-items:center;gap:3%;padding:3.5% 4%;border-radius:10px;cursor:pointer;color:var(--text);font-weight:600;transition:.15s;user-select:none}
+  .drawer .di:hover{background:rgba(0,212,255,.1);color:var(--cyan)}
+  .drawer .di.danger:hover{background:rgba(255,56,96,.12);color:var(--red)}
+  .drawer .di svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:70;display:none}.scrim.show{display:block}
+  .modal{position:fixed;inset:0;z-index:100;display:none;align-items:center;justify-content:center;padding:5%;background:rgba(6,6,15,.82)}
+  .modal.open{display:flex;animation:fadeIn .2s ease}
+  .modal-box{position:relative;width:min(94%,460px);max-height:88vh;overflow-y:auto;background:#120a2efc;border:1px solid var(--glass-border);border-radius:1.2rem;padding:7% 7% 6%}
+  .modal-box .close{position:absolute;top:3%;right:4%;cursor:pointer;color:var(--text-dim);font-size:1.6rem;background:none;border:none;line-height:1;padding:4px;z-index:5}
+  .modal-box .close:hover{color:var(--red)}
+  .modal-box h3{font-size:1.2rem;font-weight:900;margin-bottom:5%;text-align:center;padding-right:8%}
+  .field{margin-bottom:5%}
+  .field label{display:block;font-size:var(--fs-small);letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:2%}
+  .input{width:100%;font:inherit;color:var(--text);padding:3.2% 4%;background:rgba(0,0,0,.35);border:1.5px solid var(--glass-border);border-radius:.8rem;outline:none;transition:border-color .2s;user-select:text;-webkit-user-select:text;touch-action:manipulation;cursor:text}
+  .input:focus{border-color:var(--cyan)}
+  .pw-wrap{position:relative}
+  .pw-wrap .eye{position:absolute;right:3%;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--text-dim);background:none;border:none;font-size:1.2rem;padding:4px}
+  .mp-head{display:flex;flex-direction:column;align-items:center;text-align:center;gap:3%;margin-bottom:6%}
+  .mp-head .av{width:74px;height:74px;font-size:2rem}
+  .mp-row{display:flex;justify-content:space-between;padding:3% 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:var(--fs-body)}.mp-row .k{color:var(--text-dim)}
+  .mp-actions{display:flex;gap:3%;margin-top:6%}.mp-actions .btn{flex:1}
+  .ann-item{padding:4%;border:1px solid var(--glass-border);border-radius:.8rem;margin-bottom:4%;background:rgba(255,255,255,.03)}
+  .ann-item .at{font-size:var(--fs-small);color:var(--cyan);margin-bottom:2%}
+  .search-res{display:flex;align-items:center;gap:3%;padding:3.5% 4%;border-radius:10px;background:rgba(255,255,255,.04);margin-bottom:2%}
+  .search-res .av{width:36px;height:36px;font-size:.9rem}.search-res .nm{flex:1;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .search-res .st{font-size:.72rem;color:var(--text-faint)}.search-res .st.on{color:var(--green)}
+  .skeleton{color:var(--text-faint);text-align:center;padding:8%}
+  .hide{display:none!important}
+  /* harden input selectability + ensure avatars are always centered circles */
+  .modal-box input,.modal-box textarea,.input,.conv .composer textarea{-webkit-user-select:text!important;user-select:text!important;pointer-events:auto!important}
+  .av,.avatar{display:inline-flex!important;align-items:center!important;justify-content:center!important;border-radius:50%!important;text-align:center!important;line-height:1!important}
+  /* DESKTOP polish (phone is already good) */
+  @media(min-width:900px){
+    .app{padding:2.5% 4% 6%}
+    .hero{padding:3% 2% 2%}
+    .stat-grid{grid-template-columns:repeat(3,1fr);gap:2.2%}
+    .stat{padding:4.5% 4%}
+    .chooser{max-width:520px;margin:0 auto 4%}
+    .chat-wrap{min-height:64vh}
+    .chat-friends{width:280px}
+    .lb-list{gap:1.4%}
+    .lb-row{padding:2.5% 3%}
+    .lv-table td,.lv-table th{padding:2.1% 2.5%}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div style="display:flex;align-items:center;gap:3%">
+      <div class="icon-btn" id="menuBtn" title="Menu"><svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg></div>
+      <div class="brand"><span class="a">GEOMETRY</span> <span class="b">DASH</span></div>
+    </div>
+    <div class="tbtns">
+      <div class="icon-btn" id="searchBtn" title="Search players"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></div>
+      <div class="icon-btn" id="bellBtn" title="Announcements"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 004 0"/></svg><span class="badge-dot" id="bellDot"></span></div>
+      <div class="avatar" id="myAvatar" title="Profile">?</div>
+    </div>
+  </div>
+
+  <div class="chooser">
+    <div class="c active" data-v="dash">Dashboard</div>
+    <div class="c" data-v="lb">Leaderboard</div>
+    <div class="c" data-v="chat">Chat</div>
+  </div>
+
+  <section class="view active" id="v-dash">
+    <div class="hero">
+      <div class="gd"><span class="a">GEOMETRY</span> <span class="b">DASH</span></div>
+      <a class="btn btn--gold play" href="game.html">&#9654; Play Now</a>
+    </div>
+    <div class="stat-grid" id="statGrid"></div>
+    <div class="sec-h"><h2>Level Progress</h2><div class="ln"></div></div>
+    <div class="card table-shell" id="levelTable"><div class="skeleton">Loading&#8230;</div></div>
+  </section>
+
+  <section class="view" id="v-lb">
+    <div class="lb-scopes" id="lbScopes"></div>
+    <div class="lb-list" id="lbList"><div class="skeleton">Loading&#8230;</div></div>
+  </section>
+
+  <section class="view" id="v-chat">
+    <div class="chat-wrap">
+      <div class="chat-friends" id="chatFriends">
+        <div class="fh">Friends <button class="add-btn" id="addFriendBtn" title="Add friend">+</button></div>
+        <div class="fl" id="friendList"><div class="skeleton">Loading&#8230;</div></div>
+      </div>
+      <div class="conv" id="conv">
+        <div class="chat-empty" id="chatEmpty"><svg viewBox="0 0 24 24" width="40" height="40" style="stroke:var(--text-faint);fill:none;stroke-width:1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg><div style="margin-top:3%">Select a friend to start chatting</div></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<div class="drawer" id="drawer">
+  <div class="prof"><div class="avatar" id="drawerAvatar">?</div><div><div class="pn" id="drawerName">-</div><div class="pu" id="drawerUser">-</div></div></div>
+  <div class="di" data-act="profile"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg> Profile</div>
+  <div class="di" data-act="password"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg> Change Password</div>
+  <div class="di" data-act="announce"><svg viewBox="0 0 24 24"><path d="M11 5L6 9H3v6h3l5 4z"/><path d="M15 9a4 4 0 010 6"/></svg> Announcements</div>
+  <div class="di danger" data-act="logout" style="margin-top:auto"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg> Logout</div>
+</div>
+
+<div class="modal" id="modal"><div class="modal-box" id="modalBox"></div></div>
+
+<script src="app.js"></script>
+<script>
+(function(){
+  'use strict';
+  const $=id=>document.getElementById(id);
+  const PALETTE=['#00d4ff','#f5d300','#ff00e4','#00ff9d','#ff8e3c','#7c5cff','#ff3860','#3cffd0'];
+  const LEVELS=[['Stereo Madness',0],['Back On Track',1],['Polargeist',2],['Dry Out',3],['Base After Base',4],['Cant Let Go',5],['Jumper',6],['Time Machine',7],['Cycles',8],['xStep',9],['Clutterfunk',10],['Theory of Everything',11],['Electroman Adventures',12],['Clubstep',13],['Electrodynamix',14]];
+  let S={me:null,scores:null,view:'dash',lbScope:'overall',chatWith:null,chatPoll:null,friendPoll:null,lastLen:0,lastAnn:0};
+
+  /* Guarantee every input/textarea refocuses on tap (fixes mobile "can't re-select after blur"). */
+  document.addEventListener('click',function(e){var t=e.target;if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA')){try{t.focus();}catch(_){}}},true);
+
+  function avColor(n){let h=0;for(const c of (n||'?'))h=(h*31+c.charCodeAt(0))>>>0;return PALETTE[h%PALETTE.length];}
+  function avHtml(n,size){const d=n||'?';return '<span class="av" style="background:'+avColor(d)+(size?';width:'+size+';height:'+size+';font-size:'+Math.round(size*.55)+'px':'')+'">'+esc(d.charAt(0).toUpperCase())+'</span>';}
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+  function star(arr,id){const x=(arr||[]).find(s=>s.id===id);return x?x.parameter:0;}
+
+  (async function(){
+    let tok; try{ tok=await GD.kvGet('token'); }catch(e){}
+    if(!tok){ location.href='index.html'; return; }
+    GD.setToken(tok);
+    try{
+      const r=await GD.api('/api/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'online'})});
+      const d=await r.json();
+      if(!r.ok||!d.valid){ await GD.kvDel('token'); location.href='index.html'; return; }
+      S.me=d.user; S.scores=d.scores;
+    }catch(e){ alert('Cannot reach server.'); location.href='index.html'; return; }
+    initUI(); renderDashboard(); loadLeaderboard('overall'); loadFriends(); loadAnnouncements();
+    heartbeat(); setInterval(heartbeat,20000);
+  })();
+
+  function heartbeat(){ GD.api('/api/heartbeat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'online'})}).catch(()=>{}); }
+
+  function initUI(){
+    const disp=S.me.display||S.me.username;
+    $('myAvatar').textContent=disp.charAt(0).toUpperCase(); $('myAvatar').style.background=avColor(disp);
+    $('drawerAvatar').textContent=disp.charAt(0).toUpperCase(); $('drawerAvatar').style.background=avColor(disp);
+    $('drawerName').textContent=disp; $('drawerUser').textContent='@'+S.me.username;
+    document.querySelectorAll('.chooser .c').forEach(c=>c.addEventListener('click',()=>switchView(c.dataset.v)));
+    $('menuBtn').addEventListener('click',openDrawer); $('scrim').addEventListener('click',closeDrawer);
+    $('myAvatar').addEventListener('click',()=>openMyProfile());
+    $('searchBtn').addEventListener('click',openSearch);
+    $('bellBtn').addEventListener('click',()=>openAnnouncements());
+    $('addFriendBtn').addEventListener('click',openSearch);
+    document.querySelectorAll('.drawer .di').forEach(d=>d.addEventListener('click',()=>{closeDrawer();drawerAct(d.dataset.act);}));
+  }
+
+  function switchView(v){
+    S.view=v;
+    document.querySelectorAll('.chooser .c').forEach(c=>c.classList.toggle('active',c.dataset.v===v));
+    document.querySelectorAll('.view').forEach(s=>s.classList.remove('active'));
+    $('v-'+v).classList.add('active');
+    if(v==='chat'){ /* friends already polling */ }
+  }
+
+  function renderDashboard(){
+    const sc=S.scores||{}; const sd=(sc.GAME_DATA||{}).starData||[];
+    const jumps=star(sd,0),att=star(sd,1),done=star(sd,5);
+    $('statGrid').innerHTML=
+      '<div class="card stat stat--cyan"><span class="ico">&#129432;</span><div class="num">0</div><div class="lbl">Total Jumps</div></div>'+
+      '<div class="card stat stat--gold"><span class="ico">&#127919;</span><div class="num">0</div><div class="lbl">Attempts</div></div>'+
+      '<div class="card stat stat--green"><span class="ico">&#127942;</span><div class="num">0</div><div class="lbl">Levels Done</div></div>';
+    const nums=$('statGrid').querySelectorAll('.num'); [jumps,att,done].forEach((n,i)=>GD.animateCount(nums[i],n));
+    const lv=(sc.PLAYER_DATA||{}).leveldatas||[];
+    let h='<table class="lv-table"><thead><tr><th>#</th><th>Level</th><th>Difficulty</th><th>Best %</th><th>Attempts</th><th>Jumps</th><th>Coins</th></tr></thead><tbody>';
+    lv.filter(l=>!l.comingSoon).forEach(l=>{const p=l.normalMode||0;const cl=p===0?'zero':'';
+      h+='<tr><td data-label="#">'+(l.id+1)+'</td><td data-label="Level" style="color:'+(l.color||'#fff')+';font-weight:700">'+esc(l.name)+'</td><td data-label="Difficulty">'+esc(l.difficulty)+'</td>'+
+        '<td data-label="Best %" class="'+cl+'"><span>'+p+'%</span><div class="mini-bar"><i style="width:'+p+'%"></i></div></td>'+
+        '<td data-label="Attempts">'+(l.totalAttempt||0)+'</td><td data-label="Jumps">'+(l.totalJump||0)+'</td><td data-label="Coins">&#129689; '+(l.coin||0)+'</td></tr>';});
+    $('levelTable').innerHTML=h+'</tbody></table>';
+  }
+
+  function renderScopes(){
+    let h='<div class="sc'+(S.lbScope==='overall'?' active':'')+'" data-scope="overall">Overall</div>';
+    LEVELS.forEach(l=>{h+='<div class="sc'+(S.lbScope===String(l[1])?' active':'')+'" data-scope="'+l[1]+'">'+esc(l[0])+'</div>';});
+    $('lbScopes').innerHTML=h;
+    $('lbScopes').querySelectorAll('.sc').forEach(s=>s.addEventListener('click',()=>{S.lbScope=s.dataset.scope;$('lbScopes').querySelectorAll('.sc').forEach(x=>x.classList.remove('active'));s.classList.add('active');loadLeaderboard(S.lbScope);}));
+  }
+  async function loadLeaderboard(scope){
+    S.lbScope=scope; renderScopes();
+    $('lbList').innerHTML='<div class="skeleton">Loading&#8230;</div>';
+    try{
+      const r=await GD.api('/api/leaderboard?scope='+encodeURIComponent(scope)); const d=await r.json();
+      const unit=scope==='overall'?'% avg':'%';
+      let h='';
+      (d.top||[]).forEach(rr=>{const rc=rr.rank<=3?('r'+rr.rank):'';const me=rr.username===S.me.username?' me':'';
+        h+='<div class="card lb-row '+rc+me+'" data-u="'+esc(rr.username)+'">'+rankMedal(rr.rank)+avHtml(rr.display)+'<span class="nm">'+esc(rr.display)+(me?' (you)':'')+'</span><span class="val">'+rr.value+unit+'</span></div>';});
+      if(!h) h='<div class="empty-note">No players ranked yet.</div>';
+      if(d.me&&d.me.rank>20){const m=d.me;h+='<div class="card lb-row lb-pin me">'+rankMedal(m.rank)+avHtml(m.display)+'<span class="nm">'+esc(m.display)+' (you)</span><span class="val">'+m.value+unit+'</span></div>';}
+      $('lbList').innerHTML=h;
+      $('lbList').querySelectorAll('.lb-row').forEach(x=>x.addEventListener('click',()=>openProfile(x.dataset.u)));
+    }catch(e){ $('lbList').innerHTML='<div class="empty-note">Leaderboard offline.</div>'; }
+  }
+  function rankMedal(r){if(r===1)return'<span class="rk">&#129351;</span>';if(r===2)return'<span class="rk">&#129352;</span>';if(r===3)return'<span class="rk">&#129353;</span>';return'<span class="rk">#'+r+'</span>';}
+
+  async function loadFriends(){
+    try{
+      const r=await GD.api('/api/friends'); const d=await r.json();
+      const fl=d.friends||[]; const reqs=d.requests||[];
+      $('bellDot').classList.toggle('show',reqs.length>0 || S.lastAnn>0);
+      let h='';
+      reqs.forEach(q=>{h+='<div class="fl-item"><div style="flex:1"><div class="nm">'+esc(q.display)+'</div><div class="st">wants to be friends</div></div><button class="btn btn--gold" data-accept="'+esc(q.username)+'" style="padding:1.5% 3.5%;font-size:.75rem">Accept</button></div>';});
+      if(!fl.length&&!reqs.length) h='<div class="empty-note" style="padding:8%">No friends yet. Tap + to add.</div>';
+      fl.forEach(f=>{const sc=f.status==='online'?'on':(f.status==='playing'?'play':'');
+        h+='<div class="fl-item" data-u="'+esc(f.username)+'">'+avHtml(f.display)+'<div class="meta"><div class="nm">'+esc(f.display)+'</div><div class="st '+sc+'">'+GD.statusText(f.status)+'</div></div></div>';});
+      $('friendList').innerHTML=h;
+      $('friendList').querySelectorAll('.fl-item[data-u]').forEach(x=>x.addEventListener('click',()=>openChat(x.dataset.u)));
+      $('friendList').querySelectorAll('[data-accept]').forEach(b=>b.addEventListener('click',async(e)=>{e.stopPropagation();await GD.api('/api/friend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'accept',user:b.dataset.accept})});loadFriends();}));
+    }catch(e){}
+    S.friendPoll=setTimeout(loadFriends,15000);
+  }
+
+  async function openChat(username){
+    S.chatWith=username;
+    $('friendList').querySelectorAll('.fl-item').forEach(x=>x.classList.toggle('active',x.dataset.u===username));
+    stopChatPoll();
+    $('conv').classList.add('show-list');
+    $('chatFriends').classList.add('hide-mobile'); $('conv').classList.remove('hide-mobile');
+    $('conv').innerHTML='<div class="ch"><button class="back" id="backBtn">&#8249;</button>'+avHtml(username)+'<div class="info"><div class="nm" id="cvName">-</div><div class="ls" id="cvStatus">-</div></div></div><div class="msgs" id="msgs"></div><div class="composer"><textarea id="msgInput" placeholder="Message&#8230;"></textarea><button id="sendBtn">&#9658;</button></div>';
+    $('backBtn').addEventListener('click',()=>{ $('chatFriends').classList.remove('hide-mobile'); $('conv').classList.add('hide-mobile'); $('conv').classList.remove('show-list'); S.chatWith=null; stopChatPoll(); });
+    $('sendBtn').addEventListener('click',sendMessage);
+    $('msgInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}});
+    await refreshChat(true);
+    S.chatPoll=setInterval(()=>refreshChat(false),3000);
+    $('msgInput').focus();
+  }
+  function stopChatPoll(){ if(S.chatPoll){clearInterval(S.chatPoll);S.chatPoll=null;} }
+  async function refreshChat(full){
+    if(!S.chatWith)return;
+    try{
+      const r=await GD.api('/api/chat?with='+encodeURIComponent(S.chatWith)); const d=await r.json();
+      const m=d.messages||[];
+      if(!full&&m.length===S.lastLen){updateHeaderStatus();return;}
+      S.lastLen=m.length;
+      const box=$('msgs'); if(!box)return;
+      box.innerHTML=m.map(x=>{const mine=x.from===S.me.username;
+        return '<div class="mb '+(mine?'out':'in')+'">'+esc(x.text)+'<span class="t">'+new Date(x.t*1000).toLocaleString([],{hour:'numeric',minute:'2-digit',day:'numeric',month:'short'})+'</span></div>';}).join('');
+      box.scrollTop=box.scrollHeight;
+      updateHeaderStatus();
+    }catch(e){}
+  }
+  async function updateHeaderStatus(){
+    try{
+      const r=await GD.api('/api/profile?u='+encodeURIComponent(S.chatWith)); const p=(await r.json()).profile||{};
+      const nm=$('cvName'),ls=$('cvStatus'); if(!nm)return;
+      nm.textContent=p.display||S.chatWith;
+      ls.textContent=p.status==='offline'?GD.lastSeenText(p.last_seen):GD.statusText(p.status);
+      ls.className='ls '+(p.status==='online'?'on':(p.status==='playing'?'play':''));
+    }catch(e){}
+  }
+  async function sendMessage(){
+    const ta=$('msgInput'); const text=ta.value.trim(); if(!text)return;
+    ta.value='';
+    try{ await GD.api('/api/chat/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:S.chatWith,text:text})}); await refreshChat(true); }
+    catch(e){ ta.value=text; alert('Message failed to send.'); }
+  }
+
+  function openSearch(){ openModal('<button class="close" data-x>&#215;</button><h3>Find players</h3><div class="field"><input class="input" id="sq" placeholder="Search by username&#8230;"></div><div id="sr"></div>'); bindClose(); const sq=$('sq'); sq.focus();
+    let t; sq.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(doSearch,300);}); }
+  async function doSearch(){
+    const q=$('sq').value.trim().toLowerCase(); const box=$('sr');
+    if(q.length<1){box.innerHTML='';return;}
+    box.innerHTML='<div class="skeleton">Searching&#8230;</div>';
+    try{ const r=await GD.api('/api/search?q='+encodeURIComponent(q)); const d=await r.json(); const res=d.results||[];
+      if(!res.length){box.innerHTML='<div class="empty-note">No players found.</div>';return;}
+      box.innerHTML=res.map(u=>'<div class="search-res">'+avHtml(u.display)+'<div class="nm">'+esc(u.display)+'<div class="st '+(u.status==='online'?'on':'')+'">@'+esc(u.username)+' &#183; '+GD.statusText(u.status)+'</div></div><button class="btn btn--ghost" data-pu="'+esc(u.username)+'" style="padding:1.5% 3.5%;font-size:.78rem">View</button></div>').join('');
+      box.querySelectorAll('[data-pu]').forEach(b=>b.addEventListener('click',()=>{closeModal();openProfile(b.dataset.pu);}));
+    }catch(e){ box.innerHTML='<div class="empty-note">Search failed.</div>'; }
+  }
+
+  async function openProfile(username){
+    openModal('<div class="skeleton">Loading profile&#8230;</div>');
+    try{
+      const r=await GD.api('/api/profile?u='+encodeURIComponent(username)); const d=await r.json();
+      if(!d.success){$('modalBox').innerHTML='<button class="close" data-x>&#215;</button><h3>Not found</h3>';bindClose();return;}
+      const p=d.profile; const isMe=username===S.me.username;
+      $('modalBox').innerHTML='<button class="close" data-x>&#215;</button>'+
+        '<div class="mp-head">'+avHtml(p.display,'74px')+'<div><h3 style="margin:0;padding:0">'+esc(p.display)+'</h3><div class="pu" style="color:var(--text-dim)">@'+esc(p.username)+'</div></div></div>'+
+        '<div class="mp-row"><span class="k">Overall avg</span><span style="color:var(--cyan);font-weight:700">'+(p.overall||0)+'%</span></div>'+
+        '<div class="mp-row"><span class="k">Levels completed</span><span>'+(p.completed||0)+'</span></div>'+
+        '<div class="mp-row"><span class="k">Total jumps</span><span>'+(p.jumps||0)+'</span></div>'+
+        '<div class="mp-row"><span class="k">Joined</span><span>'+(p.created?new Date(p.created*1000).toLocaleDateString():'-')+'</span></div>'+
+        '<div class="mp-row"><span class="k">Status</span><span style="color:'+(p.status==='online'?'var(--green)':(p.status==='playing'?'var(--gold)':'var(--text-faint)'))+'">'+GD.statusText(p.status)+(p.status==='offline'?' &#183; '+GD.lastSeenText(p.last_seen):'')+'</span></div>'+
+        (isMe?'<div class="mp-actions"><button class="btn btn--gold" id="editDisp">Edit name</button></div>':
+          '<div class="mp-actions"><button class="btn '+(p.is_friend?'':'btn--gold')+'" id="frBtn">'+(p.is_friend?'Friends &#10003;':'Add friend')+'</button>'+(p.is_friend?'<button class="btn btn--ghost" id="msgBtn">Message</button>':'')+'</div>');
+      bindClose();
+      const fr=$('frBtn'); if(fr&&!isMe) fr.addEventListener('click',async()=>{ if(p.is_friend){closeModal();switchView('chat');openChat(username);return;} const rr=await GD.api('/api/friend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'add',user:username})}); const dd=await rr.json(); if(dd.friends){loadFriends();} fr.textContent=dd.pending?'Request sent':'Friends &#10003;'; if(dd.friends)fr.className='btn'; });
+      const mb=$('msgBtn'); if(mb)mb.addEventListener('click',()=>{closeModal();switchView('chat');openChat(username);});
+      const ed=$('editDisp'); if(ed)ed.addEventListener('click',openEditName);
+    }catch(e){ $('modalBox').innerHTML='<button class="close" data-x>&#215;</button><h3>Failed to load.</h3>';bindClose(); }
+  }
+  function openMyProfile(){ openProfile(S.me.username); }
+  function openEditName(){
+    openModal('<button class="close" data-x>&#215;</button><h3>Edit display name</h3><div class="field"><label>New name</label><input class="input" id="dn" value="'+esc(S.me.display||S.me.username)+'"></div><div class="mp-actions"><button class="btn btn--gold" id="saveDn">Save</button></div>'); bindClose();
+    $('saveDn').addEventListener('click',async()=>{const v=$('dn').value.trim().slice(0,24);if(!v)return;const r=await GD.api('/api/profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({display:v})});const d=await r.json();if(d.success){S.me.display=v;initUI();closeModal();openMyProfile();}else alert(d.error||'Failed');});
+  }
+  function openPassword(){
+    openModal('<button class="close" data-x>&#215;</button><h3>Change password</h3>'+
+      '<div class="field"><label>Current password</label><div class="pw-wrap"><input class="input" id="po" type="password"><button class="eye" data-eye="po">&#128065;</button></div></div>'+
+      '<div class="field"><label>New password</label><div class="pw-wrap"><input class="input" id="pn" type="password"><button class="eye" data-eye="pn">&#128065;</button></div></div>'+
+      '<div class="mp-actions"><button class="btn btn--gold" id="pwSave">Update</button></div>'); bindClose(); bindEyes();
+    $('pwSave').addEventListener('click',async()=>{const o=$('po').value,n=$('pn').value;if(!o||!n){alert('Fill both fields');return;}const r=await GD.api('/api/password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({old:o,new:n})});const d=await r.json();if(d.success){alert('Password updated.');closeModal();}else alert(d.error||'Failed');});
+  }
+  function bindEyes(){ document.querySelectorAll('.eye').forEach(e=>e.addEventListener('click',()=>{const inp=$(e.dataset.eye);inp.type=inp.type==='password'?'text':'password';})); }
+
+  async function loadAnnouncements(){
+    try{ const r=await GD.api('/api/announcements'); const d=await r.json(); const items=d.items||[];
+      const lastSeen=+(localStorage.getItem('ann_seen')||0);
+      const newest=items.reduce((m,a)=>Math.max(m,a.t||0),0);
+      S.lastAnn=newest;
+      if(newest>lastSeen){ $('bellDot').classList.add('show'); }
+    }catch(e){}
+  }
+  async function openAnnouncements(){
+    openModal('<div class="skeleton">Loading&#8230;</div>');
+    try{ const r=await GD.api('/api/announcements'); const d=await r.json(); const items=d.items||[];
+      const newest=items.reduce((m,a)=>Math.max(m,a.t||0),0); localStorage.setItem('ann_seen',String(newest)); S.lastAnn=0; $('bellDot').classList.remove('show');
+      $('modalBox').innerHTML='<button class="close" data-x>&#215;</button><h3>Announcements</h3>'+(items.length?items.map(a=>'<div class="ann-item"><div class="at">'+(a.t?new Date(a.t*1000).toLocaleString([],{dateStyle:'medium',timeStyle:'short'}):'')+'</div><div>'+esc(a.text)+'</div></div>').join(''):'<div class="empty-note">No announcements.</div>');
+      bindClose();
+    }catch(e){ $('modalBox').innerHTML='<button class="close" data-x>&#215;</button><h3>Failed.</h3>';bindClose(); }
+  }
+
+  function openDrawer(){$('drawer').classList.add('open');$('scrim').classList.add('show');}
+  function closeDrawer(){$('drawer').classList.remove('open');$('scrim').classList.remove('show');}
+  function drawerAct(a){ if(a==='profile')openMyProfile(); else if(a==='password')openPassword(); else if(a==='announce')openAnnouncements(); else if(a==='logout')doLogout(); }
+  async function doLogout(){
+    try{ await GD.api('/api/logout',{method:'POST'}); }catch(e){}
+    try{ await GD.wipeLocalSave(); }catch(e){}      /* clear this device's game save */
+    try{ await GD.kvDel('token'); }catch(e){}
+    try{ localStorage.clear(); }catch(e){}
+    location.href='index.html';
+  }
+
+  function openModal(html){$('modalBox').innerHTML=html;$('modal').classList.add('open');}
+  function closeModal(){$('modal').classList.remove('open');}
+  function bindClose(){ document.querySelectorAll('#modalBox [data-x]').forEach(b=>b.addEventListener('click',closeModal)); }
+  $('modal').addEventListener('click',e=>{if(e.target===$('modal'))closeModal();});
+})();
+</script>
+</body>
+</html>

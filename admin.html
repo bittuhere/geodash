@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#06060f">
+<title>Admin - Geometry Dash</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='16' y='16' width='68' height='68' rx='14' fill='%23f5d300'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="theme.css">
+<style>
+  body{background:radial-gradient(circle at 18% 18%,rgba(245,211,0,.12),transparent 42%),radial-gradient(circle at 84% 82%,rgba(255,56,96,.10),transparent 44%),linear-gradient(160deg,#06060f,#16121c 55%,#06060f);min-height:100vh}
+  .wrap{max-width:680px;margin:0 auto;padding:5% 5% 8%}
+  h1{font-size:clamp(1.3rem,5vw,1.8rem);font-weight:900;margin-bottom:.3em}
+  h1 .a{color:var(--gold)}
+  .sub{color:var(--text-dim);font-size:var(--fs-small);margin-bottom:5%}
+  .card{background:rgba(255,255,255,.05);border:1px solid var(--glass-border);border-radius:14px;padding:5%;margin-bottom:4%}
+  label{font-size:var(--fs-small);letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);display:block;margin-bottom:2%}
+  .input{width:100%;font:inherit;color:var(--text);padding:3% 4%;background:rgba(0,0,0,.32);border:1.5px solid var(--glass-border);border-radius:.7rem;outline:none;user-select:text;-webkit-user-select:text}
+  .input:focus{border-color:var(--gold)}
+  textarea.input{resize:vertical;min-height:90px}
+  .row{display:flex;gap:2%;flex-wrap:wrap;align-items:center}
+  .btn,button{font:inherit;font-weight:700;color:var(--text);background:rgba(245,211,0,.1);border:1.5px solid var(--gold);border-radius:9px;padding:.6em 1.1em;cursor:pointer;transition:.18s}
+  .btn:hover,button:hover{background:var(--gold);color:#1a1400}
+  button.ghost{border-color:var(--glass-border);background:transparent}
+  button.ghost:hover{background:rgba(255,255,255,.08);color:var(--text)}
+  button.red{border-color:var(--red);background:rgba(255,56,96,.1)}
+  button.red:hover{background:var(--red);color:#fff}
+  .ann{border:1px solid var(--glass-border);border-radius:10px;padding:3.5%;margin-bottom:3%;background:rgba(0,0,0,.2)}
+  .ann .at{font-size:var(--fs-small);color:var(--gold);margin-bottom:2%}
+  .ann .ax{display:flex;justify-content:space-between;gap:3%;align-items:flex-start}
+  .ann .tx{flex:1;word-break:break-word;line-height:1.5}
+  .muted{color:var(--text-faint);text-align:center;padding:6%}
+  .log{font-family:ui-monospace,monospace;font-size:.8em;color:var(--text-dim);background:rgba(0,0,0,.3);padding:3%;border-radius:8px;margin-top:3%;min-height:1.4em}
+  .hide{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="a">Admin</span> Console</h1>
+  <p class="sub">Global announcements. Only the host (with the admin key) can post. The key is printed in your Termux console at startup and stored in <code>storage.json</code>.</p>
+
+  <div class="card" id="keyCard">
+    <label for="akey">Admin key</label>
+    <div class="row">
+      <input class="input" id="akey" type="password" placeholder="paste the admin key" style="flex:1;min-width:60%">
+      <button id="saveKey">Unlock</button>
+    </div>
+    <div class="log" id="klog">Enter the admin key shown in your server console.</div>
+  </div>
+
+  <div class="hide" id="panel">
+    <div class="card">
+      <label for="atext">New announcement</label>
+      <textarea class="input" id="atext" placeholder="Type a message for all players&#8230;"></textarea>
+      <div class="row" style="margin-top:3%"><button id="postBtn">Post announcement</button><button class="ghost" id="reloadBtn">Refresh list</button><button class="red" id="clearKeyBtn" style="margin-left:auto">Lock</button></div>
+      <div class="log" id="plog"></div>
+    </div>
+    <div class="card">
+      <label>Current announcements</label>
+      <div id="list"><div class="muted">Loading&#8230;</div></div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+(function(){
+  'use strict';
+  const $=id=>document.getElementById(id);
+  let KEY=localStorage.getItem('admin_key')||'';
+  function headers(){return {'Content-Type':'application/json','X-Admin-Key':KEY};}
+  function L(el,t){el.textContent=t;}
+
+  async function unlock(){
+    KEY=$('akey').value.trim(); if(!KEY){L($('klog'),'Enter the admin key.');return;}
+    L($('klog'),'Connecting...');
+    try{
+      const cfg=await GD.loadConfig();
+      if(!cfg || !(cfg.tunnels||[]).length){L($('klog'),'config.json has no tunnel URLs. Open admin.html from your SITE url (not a local file).');return;}
+    }catch(e){L($('klog'),'Cannot read config.json - open admin.html via your website URL (https://...), NOT as a local file. ('+(e&&e.message)+')');return;}
+    try{
+      const base=await GD.pickBase();
+      if(!base){L($('klog'),'No tunnel reachable. Is the server (python backend.py) running?');return;}
+      const r=await GD.api('/api/admin/announcements',{headers:headers()});
+      if(r.status===401){L($('klog'),'Wrong admin key.');return;}
+      if(!r.ok){L($('klog'),'Server error '+r.status);return;}
+      localStorage.setItem('admin_key',KEY);
+      $('keyCard').classList.add('hide'); $('panel').classList.remove('hide');
+      render(await r.json());
+    }catch(e){L($('klog'),'Cannot reach server: '+(e&&e.message||'unknown')+'. Ensure the server is online.');}
+  }
+
+  async function render(data){
+    const items=(data&&data.items)||[]; const box=$('list');
+    if(!items.length){box.innerHTML='<div class="muted">No announcements yet.</div>';return;}
+    box.innerHTML=items.map(a=>'<div class="ann"><div class="at">'+(a.t?new Date(a.t*1000).toLocaleString([],{dateStyle:'medium',timeStyle:'short'}):'')+'</div>'+
+      '<div class="ax"><div class="tx">'+esc(a.text)+'</div><button class="red del" data-id="'+esc(a.id||'')+'" style="padding:.35em .7em;font-size:.78rem">Delete</button></div></div>').join('');
+    box.querySelectorAll('.del').forEach(b=>b.addEventListener('click',()=>del(b.dataset.id)));
+  }
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+
+  async function loadList(){
+    try{ const r=await GD.api('/api/admin/announcements',{headers:headers()}); if(r.ok) render(await r.json()); }catch(e){}
+  }
+  async function post(){
+    const t=$('atext').value.trim(); if(!t){L($('plog'),'Empty.');return;}
+    try{ const r=await GD.api('/api/admin/announcements',{method:'POST',headers:headers(),body:JSON.stringify({text:t})});
+      const d=await r.json();
+      if(d.success){$('atext').value='';L($('plog'),'Posted.');loadList();}else L($('plog'),d.error||'Failed');
+    }catch(e){L($('plog'),'Network error.');}
+  }
+  async function del(id){
+    try{ await GD.api('/api/admin/announcements',{method:'DELETE',headers:headers(),body:JSON.stringify({id:id})}); loadList(); }catch(e){}
+  }
+
+  $('saveKey').addEventListener('click',unlock);
+  $('akey').addEventListener('keydown',e=>{if(e.key==='Enter')unlock();});
+  $('postBtn').addEventListener('click',post);
+  $('reloadBtn').addEventListener('click',loadList);
+  $('clearKeyBtn').addEventListener('click',()=>{localStorage.removeItem('admin_key');KEY='';location.reload();});
+
+  if(KEY){ $('akey').value=KEY; unlock(); }
+})();
+</script>
+</body>
+</html>

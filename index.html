@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#06060f">
+<title>Geometry Dash</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='16' y='16' width='68' height='68' rx='14' fill='%2300d4ff'/%3E%3Crect x='33' y='33' width='34' height='34' rx='7' fill='%23f5d300'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="theme.css">
+<style>
+  body{background:radial-gradient(circle at 18% 18%,rgba(0,212,255,.13),transparent 42%),radial-gradient(circle at 84% 82%,rgba(255,0,228,.11),transparent 44%),linear-gradient(160deg,#06060f,#110a2b 55%,#06060f)}
+  body::after{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background-image:linear-gradient(rgba(0,212,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,.04) 1px,transparent 1px);background-size:38px 38px;-webkit-mask-image:radial-gradient(circle at center,#000 16%,transparent 78%);mask-image:radial-gradient(circle at center,#000 16%,transparent 78%)}
+  .panel{width:min(92%,440px);padding:9% 8% 8%}
+  .panel .brand{margin-bottom:2.5%}
+  .tagline{margin-bottom:8%}
+  .tabs{display:flex;gap:1.5%;margin-bottom:8%;background:rgba(0,0,0,.32);border-radius:999px;padding:1.4%;border:1px solid var(--glass-border)}
+  .tab{flex:1;text-align:center;padding:3.4% 0;border-radius:999px;cursor:pointer;font-weight:800;letter-spacing:.12em;text-transform:uppercase;font-size:var(--fs-small);color:var(--text-dim);transition:.25s;user-select:none}
+  .tab.active{background:linear-gradient(90deg,var(--cyan),var(--pink));color:#04121a;box-shadow:var(--glow-cyan)}
+  .msg{min-height:1.4em;text-align:center;font-size:var(--fs-small);letter-spacing:.06em;margin:4% 0 5%;transition:.25s}
+  .msg.err{color:var(--red);text-shadow:0 0 12px rgba(255,56,96,.6)}
+  .msg.ok{color:var(--green);text-shadow:0 0 12px rgba(0,255,157,.5)}
+  /* boot overlay */
+  #boot{position:fixed;inset:0;z-index:2000;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:6%;background:radial-gradient(circle at center,#1a0533 0%,#06060f 100%)}
+  #boot .spin{width:54px;height:54px;margin-bottom:5%;border:3px solid rgba(0,212,255,.2);border-top-color:var(--cyan);border-radius:50%;animation:sp 0.8s linear infinite;box-shadow:0 0 20px rgba(0,212,255,.4)}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  #boot .bt{font-weight:800;letter-spacing:.22em;text-transform:uppercase;color:#fff;text-shadow:0 0 12px var(--cyan);margin-bottom:2%}
+  #boot .bs{color:var(--text-dim);font-size:var(--fs-small);min-height:1.4em}
+  .pw-wrap{position:relative}
+  .pw-wrap .input{padding-right:14%}
+  .eye{position:absolute;right:3%;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:1.15rem;padding:6px}
+  .input,.modal-box input{-webkit-user-select:text!important;user-select:text!important}
+  .hide{display:none!important}
+</style>
+</head>
+<body>
+  <!-- BOOT -->
+  <div id="boot">
+    <div class="spin"></div>
+    <div class="bt">GEOMETRY DASH</div>
+    <div class="bs" id="bootStep">Starting&#8230;</div>
+  </div>
+
+  <!-- AUTH -->
+  <main class="stage hide" id="auth">
+    <section class="card panel reveal">
+      <h1 class="brand"><span class="a">GEOMETRY</span> <span class="b">DASH</span></h1>
+      <p class="subtitle tagline">Jump &#183; Fly &#183; Flip &#183; Survive</p>
+      <div class="tabs"><div class="tab active" data-mode="login">Login</div><div class="tab" data-mode="register">Register</div></div>
+      <form id="authForm" autocomplete="off" novalidate>
+        <div class="field"><label for="u">Username</label><input class="input" id="u" type="text" placeholder="lowercase, 3-20 chars" autocomplete="username" required></div>
+        <div class="field"><label for="p">Password</label><div class="pw-wrap"><input class="input" id="p" type="password" placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;" autocomplete="current-password" required><button type="button" class="eye" id="eyeP">&#128065;</button></div></div>
+        <div class="msg" id="msg"></div>
+        <button class="btn btn--gold btn--block" id="go" type="submit">Enter the Grid</button>
+      </form>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+  <script>
+  (function(){
+    'use strict';
+    document.addEventListener('click',function(e){var t=e.target;if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA')){try{t.focus();}catch(_){}}},true);
+    const boot=document.getElementById('boot'), bootStep=document.getElementById('bootStep');
+    const auth=document.getElementById('auth'), msg=document.getElementById('msg'), go=document.getElementById('go');
+    let mode='login';
+    document.getElementById('eyeP').addEventListener('click',()=>{const p=document.getElementById('p');p.type=p.type==='password'?'text':'password';});
+    function step(t){bootStep.textContent=t;}
+    function showAuth(){boot.classList.add('hide');auth.classList.remove('hide');}
+
+    /* ---- smart local/cloud sync (the cross-device fix, client side) ---- */
+    async function bootSync(cloudScores){
+      try{
+        step('Syncing your progress&#8230;');
+        const local=await GD.readLocalSave();      // device's idbfs save (or null)
+        let merged=cloudScores;
+        if(local){ merged=GD.mergeScores(cloudScores, local.obj);
+          // write merged back to device if it changed (uses the real binary template -> safe)
+          if(GD.canon(merged)!==GD.canon(local.obj)){ local.obj=merged; await GD.writeLocalSave(local); }
+        }
+        // push merged up if it advanced beyond cloud (server also merges -> never loses data)
+        if(GD.canon(merged)!==GD.canon(cloudScores)){
+          await GD.api('/api/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scores:merged})}).catch(()=>{});
+        }
+      }catch(e){ /* non-fatal */ }
+    }
+
+    async function enterApp(token,user){
+      GD.setToken(token);
+      await GD.kvSet('token',token); await GD.kvSet('user',user);
+      await bootSync(user && user.scores ? user.scores : null);
+      step('Loading dashboard&#8230;');
+      location.href='dashboard.html';
+    }
+
+    /* ---- boot: is there a valid session? ---- */
+    (async function(){
+      if (new URLSearchParams(location.search).get('reset') !== null) {
+        try { await GD.wipeLocalSave(); } catch (e) {}
+        try { localStorage.clear(); } catch (e) {}
+        try { await GD.kvDel('token'); } catch (e) {}
+      }
+      try{ await GD.loadConfig(); }catch(e){}
+      const token=await GD.kvGet('token');
+      if(token){
+        step('Checking session&#8230;'); GD.setToken(token);
+        try{
+          const res=await GD.api('/api/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'online'})});
+          const data=await res.json();
+          if(res.ok && data.valid){ await enterApp(token, Object.assign({},data.user,{scores:data.scores})); return; }
+        }catch(e){}
+        await GD.kvDel('token');   // invalid -> forget
+      }
+      showAuth();
+    })();
+
+    /* ---- auth UI ---- */
+    document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+      document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); t.classList.add('active');
+      mode=t.dataset.mode; go.textContent=mode==='login'?'Enter the Grid':'Create Account'; msg.className='msg'; msg.textContent='';
+    }));
+    function show(t,k){msg.className='msg '+(k||'');msg.textContent=t;}
+    document.getElementById('authForm').addEventListener('submit',async function(e){
+      e.preventDefault();
+      const u=document.getElementById('u').value.trim().toLowerCase();   // case-insensitive, no identical names
+      const p=document.getElementById('p').value;
+      if(!u||!p){show('Please fill in both fields','err');return;}
+      const old=go.textContent; go.disabled=true; go.textContent='Connecting\u{2026}';
+      try{
+        const res=await GD.api('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p,action:mode})});
+        const data=await res.json().catch(()=>({}));
+        if(res.ok && data.success){ show(mode==='login'?'Welcome back!':'Account created\u{2026}','ok'); await enterApp(data.token,data.user); }
+        else show(data.error||'Something went wrong','err');
+      }catch(err){ show('Cannot reach server. Is the tunnel online?','err'); }
+      finally{ go.disabled=false; go.textContent=old; }
+    });
+  })();
+  </script>
+</body>
+</html>

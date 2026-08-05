@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0a1a">
+  <title>Geometry Dash &#8211; Game</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='16' y='16' width='68' height='68' rx='14' fill='%2300d4ff'/%3E%3Crect x='33' y='33' width='34' height='34' rx='7' fill='%23f5d300'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="theme.css">
+  <style>
+    /* PERFORMANCE: solid background only. No animated DOM layers behind the canvas. */
+    html, body { height: 100%; overflow: hidden; background: #0a0a1a; }
+    #gameContainer { position: fixed; inset: 0; }
+    canvas { width: 100% !important; height: 100% !important; display: block; }
+    .ldr-sub { color: var(--text-dim); font-size: var(--fs-small); letter-spacing: .18em; margin-top: 2%; text-transform: uppercase; }
+    .ldr-err { color: var(--red); text-shadow: 0 0 12px rgba(255,56,96,.5); }
+    .reset-link { display:inline-block; margin-top:5%; font-size:.72rem; letter-spacing:.08em; color:var(--text-faint); text-decoration:none; opacity:.65; transition:.2s; }
+    .reset-link:hover { color:var(--red); opacity:1; }
+    .exit-hint { position: fixed; bottom: 3%; left: 0; right: 0; text-align: center; z-index: 1100; color: var(--text-faint); font-size: var(--fs-small); letter-spacing: .15em; pointer-events: none; opacity: 0; transition: opacity .6s; }
+    .exit-hint.show { opacity: 1; }
+    .exit-hint a { color: var(--gold); text-decoration: none; }
+    .exit-hint.show a { pointer-events: auto; }
+  </style>
+</head>
+<body>
+  <div id="gameContainer"></div>
+
+  <!-- LOADER (only animates during load, then removed from rendering) -->
+  <div id="loader">
+    <div class="cube-wrap">
+      <span class="ring"></span><span class="ring r2"></span><span class="ring r3"></span>
+      <svg class="gd-cube" viewBox="0 0 100 100" aria-hidden="true">
+        <rect class="cube-fill"  x="15" y="15" width="70" height="70" rx="8"></rect>
+        <rect class="cube-path"  x="15" y="15" width="70" height="70" rx="8"></rect>
+        <rect class="cube-inner" x="30" y="30" width="40" height="40" rx="4"></rect>
+        <circle class="cube-dot" cx="50" cy="50" r="6"></circle>
+      </svg>
+    </div>
+    <div class="loading-text" id="loadText">Connecting to Server</div>
+    <div class="ldr-sub" id="loadSub">Fetching game data&#8230;</div>
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-percent" id="progressPercent">0%</div>
+    <a href="?reset" class="reset-link">stuck? reset this device</a>
+  </div>
+
+  <!-- MOBILE / COMPATIBILITY MODAL -->
+  <div id="customModal">
+    <div class="modal-box">
+      <span class="modal-icon">&#128241;</span>
+      <h2>Geometry <span>Dash</span></h2>
+      <p>Built for desktop, but it runs on phones too &#8212; performance may vary. Best played in <strong>landscape</strong>.<br><strong>Continue anyway?</strong></p>
+      <button class="btn btn--gold" id="modalContinueBtn">Continue</button>
+    </div>
+  </div>
+
+  <div class="exit-hint" id="exitHint">Press <strong>Space</strong> / <strong>&#8593;</strong> or tap to jump &nbsp;&#183;&nbsp; <a href="dashboard.html">Dashboard</a></div>
+
+  <script src="app.js"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    let username = '', hadLocal = false;   /* resolved from the session store in init() (no URL param) */
+
+    /* ---- refs ---- */
+    const loader  = document.getElementById('loader');
+    const fill    = document.getElementById('progressFill');
+    const pctEl   = document.getElementById('progressPercent');
+    const loadText= document.getElementById('loadText');
+    const loadSub = document.getElementById('loadSub');
+    const modal   = document.getElementById('customModal');
+    const modalBtn= document.getElementById('modalContinueBtn');
+    const exitHint= document.getElementById('exitHint');
+
+    let TUNNEL = '', gameInstance = null, lastSyncHash = '';
+
+    /* ---- loader helpers ---- */
+    function setLoad(p, t, s) {
+      if (t) loadText.textContent = t;
+      if (s) loadSub.textContent = s;
+      const pct = Math.max(0, Math.min(100, Math.round(p * 100)));
+      fill.style.width = pct + '%'; pctEl.textContent = pct + '%';
+    }
+    function fail(msg) {
+      loadText.textContent = 'Connection Failed';
+      loadSub.innerHTML = '<span class="ldr-err">' + msg + '</span>';
+      pctEl.textContent = '\u{26A0}';
+      fill.style.width = '100%';
+      fill.style.background = 'linear-gradient(90deg,var(--red),var(--pink))';
+    }
+    /* stop ALL loader animations once the game is running -> GPU fully free for Unity */
+    function killLoader() {
+      loader.classList.add('hidden');
+      setTimeout(() => { loader.style.display = 'none'; }, 700);
+    }
+
+    /* ---- cross-device restore BEFORE Unity loads (no reload; preserves real save) ---- */
+    async function restoreBeforeLoad() {
+      try {
+        const local = await GD.readLocalSave();
+        hadLocal = !!local;
+        const r = await GD.api('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'playing' }) });
+        const cloud = (await r.json()).scores;
+        if (!cloud) return;
+        if (local) {
+          const merged = GD.mergeScores(cloud, local.obj);   // base = LOCAL real structure
+          if (GD.canon(merged) !== GD.canon(local.obj)) {
+            // SAFETY: only write if the new binary round-trips back to exactly `merged`.
+            // If it doesn't, we skip the write entirely - never risk a corrupt save.
+            let safe = false;
+            try {
+              const u8 = GD.serializePrefs(GD.objectToPrefs(merged, local.parsed));
+              const reobj = GD.prefsToObject(GD.parsePrefs(u8));
+              safe = (GD.canon(reobj) === GD.canon(merged));
+            } catch (e) { safe = false; }
+            if (safe) {
+              setLoad(0.06, 'Syncing Progress', 'Restoring your save\u{2026}');
+              local.obj = merged;
+              await GD.writeLocalSave(local);                // Unity reads this on load
+            } else {
+              console.log('restore skipped: round-trip self-check failed (no write)');
+            }
+          } else if (GD.canon(merged) !== GD.canon(cloud)) {
+            await GD.api('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scores: merged }) });
+          }
+        }
+      } catch (e) { /* non-fatal - game still loads */ }
+    }
+
+    /* Fresh-device restore: after Unity creates the local save, if the cloud is
+       ahead, write the merged save and reload ONCE (transparent). Guarded + self-checked. */
+    async function restoreAfterLoad() {
+      if (sessionStorage.getItem('gd_restored')) return false;
+      try {
+        const local = await GD.readLocalSave();
+        if (!local) return false;
+        const r = await GD.api('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'playing' }) });
+        const cloud = (await r.json()).scores;
+        if (!cloud) return false;
+        const merged = GD.mergeScores(cloud, local.obj);
+        if (GD.canon(merged) === GD.canon(local.obj)) return false;   // nothing to restore
+        let safe = false;
+        try { const u8 = GD.serializePrefs(GD.objectToPrefs(merged, local.parsed)); safe = (GD.canon(GD.prefsToObject(GD.parsePrefs(u8))) === GD.canon(merged)); } catch (e) { safe = false; }
+        if (!safe) return false;
+        sessionStorage.setItem('gd_restored', '1');
+        setLoad(0.06, 'Restoring Progress', 'Syncing your save\u{2026}');
+        local.obj = merged;
+        await GD.writeLocalSave(local);
+        location.reload();
+        return true;
+      } catch (e) { return false; }
+    }
+
+    /* Full manual reset only (the "stuck? reset" link / ?reset). We NEVER auto-wipe
+       the local save - on a slow connection that would erase real progress. */
+    async function hardReset() {
+      setLoad(0, 'Resetting', 'Clearing this device\u{2026}');
+      await GD.wipeLocalSave();
+      try { localStorage.clear(); } catch (e) {}
+      try { await GD.kvDel('token'); } catch (e) {}
+      location.href = 'index.html';
+    }
+
+    /* ---- 1. session + config + pick a LIVE tunnel for the build ---- */
+    async function init() {
+      if (new URLSearchParams(location.search).get('reset') !== null) { await hardReset(); return; }
+      const token = await GD.kvGet('token');
+      if (!token) { location.href = 'index.html'; return; }   /* must be logged in */
+      GD.setToken(token);
+      const userObj = await GD.kvGet('user');
+      username = (userObj && userObj.username) || 'player';
+      try { await GD.loadConfig(); }
+      catch (e) { fail('Could not read config.json'); return; }
+      TUNNEL = await GD.pickBase();                /* health-checks, picks best reachable */
+      if (!TUNNEL) { fail('No reachable tunnel. The server may be offline \u{2014} try again shortly.'); return; }
+      setLoad(0.04, 'Connecting to Server', 'Reaching the tunnel\u{2026}');
+      await GD.ensureLocal();                      /* fresh device: pre-create save at Unity's path (no reload) */
+      await restoreBeforeLoad();                   /* merge cloud into local BEFORE Unity reads it */
+      loadUnity();
+      /* status = playing while in-game (lightweight, 30s) */
+      setInterval(() => GD.api('/api/heartbeat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'playing' }) }).catch(() => {}), 30000);
+    }
+
+    /* ---- 2. Unity loader (via chosen tunnel) ---- */
+    function loadUnity() {
+      const script = document.createElement('script');
+      script.src = TUNNEL + '/Build/UnityLoader.js';
+      script.onerror = () => fail('Server unreachable. The tunnel may be offline \u{2014} refresh shortly.');
+      script.onload = () => {
+        setLoad(0.08, 'Loading Engine', 'Initializing Unity\u{2026}');
+
+        if (window.UnityLoader) {
+          UnityLoader.compatibilityCheck = function (instance, onSuccess, onFailure) {
+            if (!UnityLoader.SystemInfo.hasWebGL) {
+              alert('Your browser does not support WebGL. Please use a modern browser.');
+              if (onFailure) onFailure();
+              return;
+            }
+            if (UnityLoader.SystemInfo.mobile) {
+              modal.classList.add('active');
+              modalBtn.onclick = function () { modal.classList.remove('active'); forceLandscape(); if (onSuccess) onSuccess(); };
+              return;
+            }
+            if (onSuccess) onSuccess();
+          };
+        }
+
+        try {
+          gameInstance = UnityLoader.instantiate('gameContainer', TUNNEL + '/Build/GeometryDashLite.json', {
+            onProgress: function (instance, progress) {
+              setLoad(progress, 'Loading Assets', 'Streaming build files\u{2026}');
+              if (progress >= 1) {
+                setTimeout(async () => {
+                  const reloaded = await restoreAfterLoad();   /* fresh-device restore (1 transparent reload) */
+                  if (reloaded) return;
+                  killLoader();
+                  startLiveSync();                 /* sync begins only once gameplay starts */
+                  exitHint.classList.add('show');
+                  setTimeout(() => exitHint.classList.remove('show'), 4500);
+                }, 700);
+              }
+            }
+          });
+        } catch (e) {
+          fail('Failed to start the game engine.');
+        }
+      };
+      document.body.appendChild(script);
+    }
+
+    /* ---- 3. LIVE SYNC (begins after load; pauses when tab hidden; fails over) ---- */
+    function startLiveSync() {
+      setInterval(async () => {
+        if (document.hidden) return;               /* skip while in background */
+        try {
+          const db = await openDB('/idbfs');
+          if (!db.objectStoreNames.contains('FILE_DATA')) { db.close(); return; }
+          const tx = db.transaction('FILE_DATA', 'readonly');
+          const store = tx.objectStore('FILE_DATA');
+          const keys = await new Promise(r => { const req = store.getAllKeys(); req.onsuccess = () => r(req.result); });
+          const ppKeys = keys.filter(k => k.endsWith('/PlayerPrefs'));
+          if (ppKeys.length === 0) { db.close(); return; }
+
+          let bestEntry = null, bestTime = 0;
+          for (const key of ppKeys) {
+            const entry = await new Promise(r => { const req = store.get(key); req.onsuccess = () => r(req.result); });
+            if (!entry || !entry.contents) continue;
+            const ts = entry.timestamp instanceof Date ? entry.timestamp.getTime() : 0;
+            if (ts > bestTime) { bestTime = ts; bestEntry = entry; }
+          }
+          db.close();
+          if (!bestEntry) return;
+
+          const bytes = new Uint8Array(bestEntry.contents);
+          let hash = '';
+          for (let i = 0; i < Math.min(20, bytes.length); i++) hash += bytes[i];
+          hash += bestTime;
+
+          if (hash !== lastSyncHash) {
+            lastSyncHash = hash;
+            const parsed = parseUnityPrefs(bytes);
+            if (parsed) {
+              /* GD.api retries across tunnels if the current one is down */
+              await GD.api('/api/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, scores: parsed })
+              });
+            }
+          }
+        } catch (e) { /* silent */ }
+      }, 1000);
+    }
+
+    /* ---- helpers ---- */
+    function openDB(name) {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(name);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    function parseUnityPrefs(bytes) {
+      const view = new Uint8Array(bytes);
+      if (bytes.length < 16) return null;
+      if (new TextDecoder().decode(view.slice(0, 8)) !== 'UnityPrf') return null;
+      let offset = 16;
+      const prefs = {};
+      try {
+        while (offset + 2 <= view.length) {
+          const keyLen = view[offset++];
+          if (keyLen < 1 || keyLen > 60 || offset + keyLen > view.length) break;
+          const key = new TextDecoder().decode(view.slice(offset, offset + keyLen));
+          offset += keyLen;
+          if (!/^[ -~]+$/.test(key)) break;
+          const type = view[offset++];
+          if (type === 0x80) {
+            if (offset + 4 > view.length) break;
+            const valLen = new DataView(view.buffer, view.byteOffset + offset, 4).getInt32(0, true);
+            offset += 4;
+            if (valLen < 0 || offset + valLen > view.length) break;
+            let start = offset;
+            while (start < offset + valLen && view[start] === 0x00) start++;
+            const str = new TextDecoder().decode(view.slice(start, offset + valLen));
+            try { prefs[key] = JSON.parse(str); } catch (_) { prefs[key] = str; }
+            offset += valLen;
+          } else if (type === 0) {
+            if (offset + 4 > view.length) break;
+            const valLen = new DataView(view.buffer, view.byteOffset + offset, 4).getInt32(0, true);
+            offset += 4;
+            if (offset + valLen > view.length) break;
+            prefs[key] = new TextDecoder().decode(view.slice(offset, offset + valLen));
+            offset += valLen;
+          } else if (type === 1) {
+            if (offset + 4 > view.length) break;
+            prefs[key] = new DataView(view.buffer, view.byteOffset + offset, 4).getFloat32(0, true);
+            offset += 4;
+          } else if (type === 2) {
+            if (offset + 4 > view.length) break;
+            prefs[key] = new DataView(view.buffer, view.byteOffset + offset, 4).getInt32(0, true);
+            offset += 4;
+          } else break;
+        }
+      } catch (_) { return null; }
+      return prefs;
+    }
+
+    /* ---- keyboard jump (space / up) ---- */
+    document.addEventListener('keydown', function (e) {
+      if (e.code === 'Space' || e.code === 'ArrowUp') {
+        e.preventDefault();
+        const canvas = document.querySelector('#gameContainer canvas');
+        if (canvas) {
+          const rect = canvas.getBoundingClientRect();
+          const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+          canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: cx, clientY: cy }));
+          setTimeout(() => canvas.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, clientX: cx, clientY: cy })), 50);
+        }
+      }
+    });
+
+    /* ---- request landscape on mobile ---- */
+    async function forceLandscape() {
+      if (!/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) return;
+      try {
+        const el = document.documentElement;
+        if (el.requestFullscreen) await el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+        if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape');
+      } catch (e) { /* ignore */ }
+    }
+
+    init();
+  })();
+  </script>
+</body>
+</html>

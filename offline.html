@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0a1a">
+  <title>Geometry Dash</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='16' y='16' width='68' height='68' rx='14' fill='%2300d4ff'/%3E%3Crect x='33' y='33' width='34' height='34' rx='7' fill='%23f5d300'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="theme.css">
+  <style>
+    /* PERFORMANCE: solid background only. No animated DOM layers behind the canvas. */
+    html, body { height: 100%; overflow: hidden; background: #0a0a1a; }
+    #gameContainer { position: fixed; inset: 0; }
+    canvas { width: 100% !important; height: 100% !important; display: block; }
+    .ldr-sub { color: var(--text-dim); font-size: var(--fs-small); letter-spacing: .18em; margin-top: 2%; text-transform: uppercase; }
+  </style>
+</head>
+<body>
+  <div id="gameContainer"></div>
+
+  <!-- LOADER (only animates during load, then removed from rendering) -->
+  <div id="loader">
+    <div class="cube-wrap">
+      <span class="ring"></span><span class="ring r2"></span><span class="ring r3"></span>
+      <svg class="gd-cube" viewBox="0 0 100 100" aria-hidden="true">
+        <rect class="cube-fill"  x="15" y="15" width="70" height="70" rx="8"></rect>
+        <rect class="cube-path"  x="15" y="15" width="70" height="70" rx="8"></rect>
+        <rect class="cube-inner" x="30" y="30" width="40" height="40" rx="4"></rect>
+        <circle class="cube-dot" cx="50" cy="50" r="6"></circle>
+      </svg>
+    </div>
+    <div class="loading-text">Loading</div>
+    <div class="ldr-sub">Preparing the grid&#8230;</div>
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-percent" id="progressPercent">0%</div>
+  </div>
+
+  <!-- MOBILE MODAL -->
+  <div id="customModal">
+    <div class="modal-box">
+      <span class="modal-icon">&#128241;</span>
+      <h2>Geometry <span>Dash</span></h2>
+      <p>Built for desktop, but it runs on phones too &#8212; performance may vary. Best played in <strong>landscape</strong>.<br><strong>Continue anyway?</strong></p>
+      <button class="btn btn--gold" id="modalContinueBtn">Continue</button>
+    </div>
+  </div>
+
+  <!-- UNITY (local build, no tunnel) -->
+  <script src="Build/UnityLoader.js"></script>
+  <script>
+  (function () {
+    'use strict';
+    const loader = document.getElementById('loader');
+    const fill = document.getElementById('progressFill');
+    const pctEl = document.getElementById('progressPercent');
+    const modal = document.getElementById('customModal');
+    const modalBtn = document.getElementById('modalContinueBtn');
+
+    function setLoad(p) {
+      const pct = Math.max(0, Math.min(100, Math.round(p * 100)));
+      fill.style.width = pct + '%'; pctEl.textContent = pct + '%';
+      if (p >= 1) {
+        setTimeout(() => {
+          loader.classList.add('hidden');
+          setTimeout(() => { loader.style.display = 'none'; }, 700);  /* stop all loader animations -> GPU free for Unity */
+        }, 600);
+      }
+    }
+
+    UnityLoader.compatibilityCheck = function (instance, onSuccess, onFailure) {
+      if (!UnityLoader.SystemInfo.hasWebGL) {
+        alert('Your browser does not support WebGL. Please use a modern browser.');
+        if (onFailure) onFailure(); return;
+      }
+      if (UnityLoader.SystemInfo.mobile) {
+        modal.classList.add('active');
+        modalBtn.onclick = function () { modal.classList.remove('active'); forceLandscape(); if (onSuccess) onSuccess(); };
+        return;
+      }
+      if (onSuccess) onSuccess();
+    };
+
+    setTimeout(function () {
+      UnityLoader.instantiate('gameContainer', 'Build/GeometryDashLite.json', { onProgress: function (i, p) { setLoad(p); } });
+    }, 30);
+
+    /* keyboard jump */
+    document.addEventListener('keydown', function (e) {
+      if (e.code === 'Space' || e.code === 'ArrowUp') {
+        e.preventDefault();
+        const canvas = document.querySelector('#gameContainer canvas');
+        if (canvas) {
+          const rect = canvas.getBoundingClientRect();
+          const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+          canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: cx, clientY: cy }));
+          setTimeout(() => canvas.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, clientX: cx, clientY: cy })), 50);
+        }
+      }
+    });
+
+    async function forceLandscape() {
+      if (!/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) return;
+      try {
+        const el = document.documentElement;
+        if (el.requestFullscreen) await el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+        if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape');
+      } catch (e) {}
+    }
+  })();
+  </script>
+</body>
+</html>

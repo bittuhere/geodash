@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PlayerPrefs Editor (self-checking)</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#070710;--card:rgba(255,255,255,.05);--bd:rgba(255,255,255,.13);
+    --cyan:#00d4ff;--gold:#f5d300;--green:#00ff9d;--red:#ff3860;
+    --tx:#fff;--dim:rgba(255,255,255,.6);--fnt:system-ui,Segoe UI,sans-serif;
+  }
+  html,body{height:100%}
+  body{font-family:var(--fnt);color:var(--tx);line-height:1.5;padding:4% 5%;
+    background:
+      radial-gradient(circle at 18% 18%,rgba(0,212,255,.12),transparent 42%),
+      radial-gradient(circle at 84% 82%,rgba(255,0,228,.10),transparent 44%),
+      linear-gradient(160deg,#06060f,#100a28 55%,#06060f);
+    background-attachment:fixed;min-height:100vh}
+  .wrap{max-width:920px;margin:0 auto}
+  h1{font-size:clamp(1.4rem,5vw,2rem);font-weight:900;margin-bottom:.4em}
+  h1 .a{color:var(--cyan)}h1 .b{color:var(--gold)}
+  .sub{color:var(--dim);font-size:.9em;margin-bottom:4%}
+  .card{background:var(--card);border:1px solid var(--bd);border-radius:14px;
+    padding:4%;margin-bottom:4%;backdrop-filter:blur(8px)}
+  .card h2{font-size:1.05rem;margin-bottom:3%;display:flex;align-items:center;gap:.5em}
+  .step{display:inline-flex;width:1.7em;height:1.7em;align-items:center;justify-content:center;
+    border-radius:50%;background:linear-gradient(135deg,var(--cyan),var(--gold));color:#04121a;font-weight:900;font-size:.8em}
+  .row{display:flex;gap:2%;flex-wrap:wrap;align-items:center}
+  button,.btn{font:inherit;font-weight:700;letter-spacing:.03em;color:var(--tx);
+    background:rgba(0,212,255,.1);border:1.5px solid var(--cyan);border-radius:9px;
+    padding:.6em 1.1em;cursor:pointer;transition:.18s;text-decoration:none;display:inline-block}
+  button:hover,.btn:hover{background:var(--cyan);color:#04121a}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button.gold{border-color:var(--gold);background:rgba(245,211,0,.1)}
+  button.gold:hover{background:var(--gold);color:#1a1400}
+  button.ghost{border-color:var(--bd);background:transparent}
+  button.ghost:hover{background:rgba(255,255,255,.08);color:var(--tx)}
+  button.red{border-color:var(--red);background:rgba(255,56,96,.1)}
+  button.red:hover{background:var(--red);color:#fff}
+  select,input[type=file]{font:inherit;background:rgba(0,0,0,.35);color:var(--tx);
+    border:1px solid var(--bd);border-radius:9px;padding:.55em .8em}
+  .meta{font-size:.82em;color:var(--dim);margin-top:2%;word-break:break-all}
+  .pill{display:inline-block;padding:.1em .6em;border-radius:999px;font-size:.72em;font-weight:800;letter-spacing:.05em}
+  .ok{background:rgba(0,255,157,.15);color:var(--green);border:1px solid var(--green)}
+  .bad{background:rgba(255,56,96,.15);color:var(--red);border:1px solid var(--red)}
+  .warn{background:rgba(245,211,0,.15);color:var(--gold);border:1px solid var(--gold)}
+  .log{background:rgba(0,0,0,.4);border:1px solid var(--bd);border-radius:9px;padding:3%;
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.8em;color:var(--dim);
+    white-space:pre-wrap;word-break:break-all;max-height:200px;overflow:auto;margin-top:2%}
+  .entry{border:1px solid var(--bd);border-radius:10px;padding:3%;margin-bottom:3%;background:rgba(0,0,0,.2)}
+  .entry .eh{display:flex;align-items:center;gap:.6em;margin-bottom:2%;flex-wrap:wrap}
+  .badge{font-family:ui-monospace,monospace;font-size:.72em;padding:.15em .5em;border-radius:6px;
+    background:rgba(255,255,255,.1);border:1px solid var(--bd)}
+  .b80{color:var(--gold);border-color:var(--gold)}
+  .b0{color:var(--cyan);border-color:var(--cyan)}
+  .b1{color:var(--green);border-color:var(--green)}
+  .b2{color:#ff8e3c;border-color:#ff8e3c}
+  code.k{font-family:ui-monospace,monospace;color:var(--tx);font-weight:700;word-break:break-all}
+  textarea,input.num{width:100%;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.82em;
+    background:rgba(0,0,0,.4);color:var(--tx);border:1px solid var(--bd);border-radius:8px;padding:.8em;resize:vertical}
+  input.num{font-family:inherit}
+  .etools{display:flex;gap:1.5%;flex-wrap:wrap;margin-top:2%}
+  .etools button{padding:.35em .8em;font-size:.78em}
+  .hex{font-family:ui-monospace,monospace;font-size:.74em;color:var(--dim);word-break:break-all;
+    background:rgba(0,0,0,.35);padding:2%;border-radius:8px;border:1px solid var(--bd)}
+  .hide{display:none}
+  .muted{color:var(--dim);font-size:.85em}
+  .danger{color:var(--red)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="a">PlayerPrefs</span> <span class="b">Editor</span></h1>
+  <p class="sub">Self-checking binary editor for the Unity <code>UnityPrf</code> save in IndexedDB. It proves its serializer is byte-faithful (round-trip) before any edit, re-validates after, then writes.</p>
+
+  <!-- STEP 1: LOAD -->
+  <div class="card">
+    <h2><span class="step">1</span> Load save from this device</h2>
+    <div class="row">
+      <button id="scanBtn">Scan IndexedDB</button>
+      <select id="keySel" disabled><option>- no save loaded -</option></select>
+      <button id="loadBtn" class="gold" disabled>Load</button>
+    </div>
+    <div class="meta" id="fileMeta"></div>
+  </div>
+
+  <!-- STEP 2: INTEGRITY -->
+  <div class="card hide" id="checkCard">
+    <h2><span class="step">2</span> Integrity check (must pass before editing)</h2>
+    <div class="row">
+      <button id="rtBtn">Run round-trip test</button>
+      <span id="rtPill" class="pill warn">not run</span>
+    </div>
+    <div class="log" id="rtLog">Round-trip = parse the original, re-serialize with NO changes, compare byte-for-byte. If identical, the serializer perfectly understands this file's format.</div>
+  </div>
+
+  <!-- STEP 3: EDIT -->
+  <div class="card hide" id="editCard">
+    <h2><span class="step">3</span> Edit values</h2>
+    <div id="entries"></div>
+    <p class="muted">Tip: <b>0x80</b> entries are usually JSON (GAME_DATA / PLAYER_DATA). Use Format/Validate to stay safe. Changing a value updates its length prefix automatically.</p>
+  </div>
+
+  <!-- STEP 4: SAVE -->
+  <div class="card hide" id="saveCard">
+    <h2><span class="step">4</span> Save (self-checked)</h2>
+    <div class="row">
+      <button id="backupBtn" class="ghost">Download backup (.bin)</button>
+      <label class="btn ghost" style="cursor:pointer">Restore from file<input type="file" id="restoreFile" accept=".bin,.dat,application/octet-stream" class="hide"></label>
+      <button id="saveBtn" class="gold" disabled>Write to IndexedDB</button>
+    </div>
+    <div class="log" id="saveLog">Backup is also auto-downloaded on every successful write.</div>
+  </div>
+
+  <!-- HEX -->
+  <div class="card hide" id="hexCard">
+    <h2><span class="step">#</span> Hex preview (first bytes)</h2>
+    <div class="hex" id="hexView"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   UnityPrf binary parser + faithful serializer
+   Format: [16-byte header][entries...][tail]
+   entry: keyLen(1) key(n) type(1) value(...)
+     type 0x80 : int32 len + [leading-zero prefix][utf8 string]
+     type 0    : int32 len + utf8 string
+     type 1    : float32 LE
+     type 2    : int32 LE
+   ============================================================ */
+const te = new TextEncoder();
+const td = new TextDecoder();
+
+function i32(v){const a=new Uint8Array(4);new DataView(a.buffer).setInt32(0,v|0,true);return a;}
+function u32(v){const a=new Uint8Array(4);new DataView(a.buffer).setUint32(0,v>>>0,true);return a;}
+function f32(v){const a=new Uint8Array(4);new DataView(a.buffer).setFloat32(0,Number(v),true);return a;}
+function rdI32(u,off){return new DataView(u.buffer,u.byteOffset+off,4).getInt32(0,true);}
+function rdU32(u,off){return new DataView(u.buffer,u.byteOffset+off,4).getUint32(0,true);}
+function rdF32(u,off){return new DataView(u.buffer,u.byteOffset+off,4).getFloat32(0,true);}
+function cat(parts){let n=0;for(const p of parts)n+=p.length;const o=new Uint8Array(n);let k=0;for(const p of parts){o.set(p,k);k+=p.length;}return o;}
+
+function parsePrefs(u){
+  u = u instanceof Uint8Array ? u : new Uint8Array(u);
+  if(u.length<16) throw new Error("file too small ("+u.length+" bytes)");
+  if(td.decode(u.slice(0,8))!=="UnityPrf") throw new Error("bad magic - not a UnityPrf file");
+  const header=u.slice(0,16);
+  let off=16; const entries=[];
+  while(off+2<=u.length){
+    const start=off;
+    const keyLen=u[off++];
+    if(keyLen<1||keyLen>60||off+keyLen>u.length){off=start;break;}
+    const key=td.decode(u.slice(off,off+keyLen)); off+=keyLen;
+    if(!/^[ -~]+$/.test(key)){off=start;break;}
+    if(off>=u.length){off=start;break;}
+    const type=u[off++]; let value, prefix=null;
+    if(type===0x80){
+      if(off+4>u.length){off=start;break;}
+      const len=rdI32(u,off); off+=4;
+      if(len<0||off+len>u.length){off=start;break;}
+      let s=off; while(s<off+len&&u[s]===0)s++;        // leading-zero prefix
+      prefix=u.slice(off,s);
+      value=td.decode(u.slice(s,off+len));
+      off+=len;
+    } else if(type===0){
+      if(off+4>u.length){off=start;break;}
+      const len=rdI32(u,off); off+=4;
+      if(len<0||off+len>u.length){off=start;break;}
+      value=td.decode(u.slice(off,off+len)); off+=len;
+    } else if(type===1){
+      if(off+4>u.length){off=start;break;}
+      value=rdF32(u,off); off+=4;
+    } else if(type===2){
+      if(off+4>u.length){off=start;break;}
+      value=rdI32(u,off); off+=4;
+    } else { off=start; break; }
+    entries.push({key,type,value,prefix});
+  }
+  return {header,entries,tail:u.slice(off)};
+}
+
+function serializePrefs(p){
+  const parts=[p.header.slice()];
+  for(const e of p.entries){
+    const kb=te.encode(e.key);
+    if(kb.length>255) throw new Error("key too long: "+e.key);
+    parts.push(new Uint8Array([kb.length]),kb,new Uint8Array([e.type]));
+    if(e.type===0x80){
+      const sb=te.encode(String(e.value));
+      const pre=(e.prefix&&e.prefix.length)?e.prefix:new Uint8Array(0);
+      const region=new Uint8Array(pre.length+sb.length);
+      region.set(pre,0); region.set(sb,pre.length);
+      parts.push(i32(region.length),region);
+    } else if(e.type===0){
+      const sb=te.encode(String(e.value));
+      parts.push(i32(sb.length),sb);
+    } else if(e.type===1){ parts.push(f32(e.value)); }
+    else if(e.type===2){ parts.push(i32(e.value)); }
+    else throw new Error("unknown type "+e.type);
+  }
+  parts.push(p.tail.slice());
+  return cat(parts);
+}
+
+/* detect+update a possible total-length field in the header (bytes 8..15) */
+function updateLenField(header, origLen, newLen){
+  for(const off of [8,12]){
+    if(rdU32(header,off)===origLen){          // strong signal it's a length field
+      const h=header.slice(); new DataView(h.buffer).setUint32(off,newLen>>>0,true); return h;
+    }
+  }
+  return header;
+}
+
+function roundTrip(u){
+  const a=u instanceof Uint8Array?u:new Uint8Array(u);
+  const parsed=parsePrefs(a);
+  const b=serializePrefs(parsed);
+  let diff=-1; const n=Math.min(a.length,b.length);
+  for(let i=0;i<Math.max(a.length,b.length);i++){const x=a[i],y=b[i];if(x!==y){diff=i;break;}}
+  return {ok:(a.length===b.length&&diff===-1), diff, aLen:a.length, bLen:b.length, entries:parsed.entries.length, tailLen:parsed.tail.length, parsed};
+}
+
+/* ============================================================
+   IndexedDB helpers (Emscripten idbfs: db '/idbfs', store 'FILE_DATA')
+   ============================================================ */
+function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open('/idbfs');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
+
+async function listPP(){
+  const db=await openDB();
+  if(!db.objectStoreNames.contains('FILE_DATA')){db.close();return [];}
+  const tx=db.transaction('FILE_DATA','readonly'); const st=tx.objectStore('FILE_DATA');
+  const keys=await new Promise(r=>{const q=st.getAllKeys();q.onsuccess=()=>r(q.result);});
+  const pp=(keys||[]).filter(k=>typeof k==='string'&&k.indexOf('/PlayerPrefs')>=0&&k.endsWith('/PlayerPrefs'));
+  const out=[];
+  for(const k of pp){
+    const e=await new Promise(r=>{const q=st.get(k);q.onsuccess=()=>r(q.result);});
+    if(!e||!e.contents||!(e.contents.byteLength||e.contents.length)) continue;
+    out.push({key:k, entry:e, ts:(e.timestamp instanceof Date)?e.timestamp.getTime():0});
+  }
+  db.close();
+  out.sort((x,y)=>y.ts-x.ts);
+  return out;
+}
+function bytesOf(entry){
+  const c=entry.contents;
+  return c instanceof ArrayBuffer ? new Uint8Array(c) : new Uint8Array(c);
+}
+async function writePP(key, newU8){
+  const db=await openDB();
+  const tx=db.transaction('FILE_DATA','readwrite'); const st=tx.objectStore('FILE_DATA');
+  const e=await new Promise(r=>{const q=st.get(key);q.onsuccess=()=>r(q.result);});
+  const origIsAB=e.contents instanceof ArrayBuffer;
+  const copy=new Uint8Array(newU8);                 // fresh, exact-length
+  e.contents = origIsAB ? copy.buffer : copy;
+  e.timestamp = new Date();
+  await new Promise((res,rej)=>{const q=st.put(e,key);q.onsuccess=()=>res();q.onerror=()=>rej(q.error);});
+  db.close();
+}
+
+/* ============================================================
+   UI state
+   ============================================================ */
+let STATE={list:[], key:null, entry:null, origU8:null, parsed:null, rtOk:false};
+
+const $=id=>document.getElementById(id);
+function log(el,txt){el.textContent=txt;}
+function toHex(u,max){u=u instanceof Uint8Array?u:new Uint8Array(u);const n=Math.min(u.length,max||64);
+  let s="";for(let i=0;i<n;i++){s+=u[i].toString(16).padStart(2,"0");if(i%16===15)s+="\n";else s+=" ";}
+  if(u.length>n)s+="...("+u.length+" bytes)";return s.trim();}
+
+$("scanBtn").onclick=async()=>{
+  try{
+    STATE.list=await listPP();
+    const sel=$("keySel");
+    if(!STATE.list.length){sel.innerHTML='<option>- no PlayerPrefs found; play the game first -</option>';sel.disabled=true;$("loadBtn").disabled=true;return;}
+    sel.innerHTML=STATE.list.map((x,i)=>'<option value="'+i+'">'+x.key.split("/").pop()+' @ '+x.key+' ('+bytesOf(x.entry).length+' B)</option>').join("");
+    sel.disabled=false; $("loadBtn").disabled=false;
+  }catch(err){alert("Scan failed: "+err.message);}
+};
+
+$("loadBtn").onclick=async()=>{
+  const i=+$("keySel").value; const item=STATE.list[i]; if(!item)return;
+  STATE.key=item.key; STATE.entry=item.entry;
+  STATE.origU8=bytesOf(item.entry);
+  try{ STATE.parsed=parsePrefs(STATE.origU8); }
+  catch(e){ $("fileMeta").innerHTML='<span class="danger">Parse error: '+e.message+'</span>'; return; }
+  $("fileMeta").innerHTML="path: <code>"+item.key+"</code><br>size: "+STATE.origU8.length+" bytes &nbsp; entries: "+STATE.parsed.entries.length+" &nbsp; tail: "+STATE.parsed.tail.length+" B";
+  $("hexView").textContent=toHex(STATE.origU8,64);
+  $("checkCard").classList.remove("hide"); $("hexCard").classList.remove("hide");
+  $("editCard").classList.add("hide"); $("saveCard").classList.add("hide");
+  $("rtPill").className="pill warn"; $("rtPill").textContent="not run";
+  STATE.rtOk=false; $("saveBtn").disabled=true;
+  runRoundTrip();
+};
+
+function runRoundTrip(){
+  const r=roundTrip(STATE.origU8);
+  STATE.rtOk = r.ok && r.entries > 0;
+  if(r.ok && r.entries > 0){
+    $("rtPill").className="pill ok"; $("rtPill").textContent="PASS - byte-identical";
+    log($("rtLog"),"PASS: serialize(parse(original)) === original, byte-for-byte.\nentries="+r.entries+", tail="+r.tailLen+" B.\nThe serializer fully understands this file - editing is safe.");
+    renderEntries(); $("editCard").classList.remove("hide"); $("saveCard").classList.remove("hide");
+    $("saveBtn").disabled=false;
+  }else if(r.ok && r.entries === 0){
+    $("rtPill").className="pill bad"; $("rtPill").textContent="FAIL - 0 entries";
+    log($("rtLog"),"FAIL: bytes round-trip fine BUT 0 entries were parsed - the parser does not recognise this file's structure (everything fell into the tail). Editing is disabled.");
+    $("editCard").classList.add("hide"); $("saveCard").classList.add("hide"); $("saveBtn").disabled=true;
+  }else{
+    $("rtPill").className="pill bad"; $("rtPill").textContent="FAIL";
+    log($("rtLog"),"FAIL: round-trip differs.\nfirst diff byte="+r.diff+", origLen="+r.aLen+", rebuiltLen="+r.bLen+"\nEditing is NOT recommended - the format has a structure this tool does not capture.");
+    $("editCard").classList.add("hide"); $("saveCard").classList.add("hide"); $("saveBtn").disabled=true;
+  }
+}
+$("rtBtn").onclick=runRoundTrip;
+
+function typeBadge(t){
+  const map={"128":"b80","0":"b0","1":"b1","2":"b2"};
+  const name={"128":"0x80 string/json","0":"0 string","1":"1 float","2":"2 int"}[String(t)]||("type "+t);
+  return '<span class="badge '+(map[String(t)]||"")+'">'+name+'</span>';
+}
+
+function renderEntries(){
+  const box=$("entries"); box.innerHTML="";
+  STATE.parsed.entries.forEach((e,idx)=>{
+    const div=document.createElement("div"); div.className="entry";
+    let field;
+    if(e.type===1||e.type===2){
+      field='<input class="num" data-i="'+idx+'" data-kind="num" value="'+e.value+'">';
+    } else {
+      const isJSON=e.value.trim().startsWith("{")||e.value.trim().startsWith("[");
+      field='<textarea rows="'+(isJSON?12:3)+'" data-i="'+idx+'" data-kind="str">'+e.value.replace(/</g,"&lt;")+'</textarea>'+
+        (isJSON?'<div class="etools"><button data-act="fmt" data-i="'+idx+'">Format JSON</button><button data-act="min" data-i="'+idx+'">Minify</button><button data-act="val" data-i="'+idx+'">Validate</button></div>':'');
+    }
+    div.innerHTML='<div class="eh">'+typeBadge(e.type)+'<code class="k">'+e.key+'</code>'+(e.prefix&&e.prefix.length?'<span class="muted">prefix '+e.prefix.length+' zero bytes</span>':'')+'</div>'+field;
+    box.appendChild(div);
+  });
+}
+
+$("entries").addEventListener("click",ev=>{
+  const b=ev.target; if(!b.dataset||!b.dataset.act)return;
+  const i=+b.dataset.i; const ta=document.querySelector('textarea[data-i="'+i+'"]'); if(!ta)return;
+  if(b.dataset.act==="fmt"){try{ta.value=JSON.stringify(JSON.parse(ta.value),null,2);}catch(e){alert("Not valid JSON: "+e.message);}}
+  if(b.dataset.act==="min"){try{ta.value=JSON.stringify(JSON.parse(ta.value));}catch(e){alert("Not valid JSON: "+e.message);}}
+  if(b.dataset.act==="val"){try{JSON.parse(ta.value);alert("Valid JSON [OK]");}catch(e){alert("Invalid JSON: "+e.message);}}
+});
+
+function collectEdits(){
+  const p={header:STATE.parsed.header.slice(), entries:[], tail:STATE.parsed.tail.slice()};
+  STATE.parsed.entries.forEach((e,idx)=>{
+    const ne=Object.assign({},e,{prefix:e.prefix?e.prefix.slice():null});
+    const el=document.querySelector('[data-i="'+idx+'"]');
+    if(ne.type===1||ne.type===2){ ne.value=Number(el.value); if(!isFinite(ne.value)) throw new Error("bad number for "+e.key); }
+    else { ne.value=el.value; }
+    p.entries.push(ne);
+  });
+  return p;
+}
+
+function download(name,u8){
+  const blob=new Blob([u8],{type:"application/octet-stream"});
+  const url=URL.createObjectURL(blob); const a=document.createElement("a");
+  a.href=url; a.download=name; a.click(); URL.revokeObjectURL(url);
+}
+
+$("backupBtn").onclick=()=>{ if(STATE.origU8) download("playerprefs-backup-"+Date.now()+".bin",STATE.origU8); };
+
+$("restoreFile").onchange=async(ev)=>{
+  const f=ev.target.files[0]; if(!f||!STATE.key)return;
+  const buf=await f.arrayBuffer(); const u8=new Uint8Array(buf);
+  try{ parsePrefs(u8); }catch(e){ alert("That file is not a valid UnityPrf backup: "+e.message); return; }
+  if(!confirm("Overwrite the current save with this backup file? (a .bin of the current save is downloaded first)"))return;
+  download("playerprefs-before-restore-"+Date.now()+".bin",STATE.origU8);
+  await writePP(STATE.key,u8);
+  log($("saveLog"),"Restored backup into IndexedDB. Reload the game to use it.");
+  alert("Restored. Reload the game.");
+};
+
+$("saveBtn").onclick=async()=>{
+  const sl=$("saveLog");
+  let rebuilt;
+  try{ rebuilt=serializePrefs(collectEdits()); }
+  catch(e){ log(sl,"ERROR: "+e.message); return; }
+  // self-check 1: re-parse the rebuilt bytes
+  let re1; try{ re1=parsePrefs(rebuilt); }catch(e){ log(sl,"SELF-CHECK FAILED: rebuilt binary does not parse: "+e.message); return; }
+  // self-check 2: idempotent (serialize(parse(rebuilt))===rebuilt)
+  const re2=serializePrefs(re1);
+  if(re2.length!==rebuilt.length){ log(sl,"SELF-CHECK FAILED: not idempotent (length)"); return; }
+  for(let i=0;i<rebuilt.length;i++){ if(rebuilt[i]!==re2[i]){ log(sl,"SELF-CHECK FAILED: not idempotent at byte "+i); return; } }
+  // self-check 3: structure preserved (count/keys/types)
+  if(re1.entries.length!==STATE.parsed.entries.length){ log(sl,"SELF-CHECK FAILED: entry count changed"); return; }
+  for(let i=0;i<re1.entries.length;i++){
+    const a=re1.entries[i],b=STATE.parsed.entries[i];
+    if(a.key!==b.key||a.type!==b.type){ log(sl,"SELF-CHECK FAILED: entry "+i+" key/type changed"); return; }
+  }
+  // header length-field heuristic
+  const finalU8=updateLenField(rebuilt,STATE.origU8.length,rebuilt.length);
+  log(sl,"Self-check passed: parses, idempotent, structure intact ("+re1.entries.length+" entries, "+finalU8.length+" bytes).\nWriting to IndexedDB...");
+  // auto-backup first
+  download("playerprefs-backup-"+Date.now()+".bin",STATE.origU8);
+  try{
+    await writePP(STATE.key,finalU8);
+    // verify: re-read and re-parse
+    const item=STATE.list.find(x=>x.key===STATE.key);
+    const again=await (async()=>{const db=await openDB();const tx=db.transaction('FILE_DATA','readonly');const st=tx.objectStore('FILE_DATA');const e=await new Promise(r=>{const q=st.get(STATE.key);q.onsuccess=()=>r(q.result);});db.close();return bytesOf(e);})();
+    let v; try{ v=parsePrefs(again); }catch(e){ log(sl,"WROTE, but re-read failed to parse: "+e.message+" - restore your backup!"); return; }
+    if(v.entries.length!==re1.entries.length){ log(sl,"WROTE, but re-read entry count mismatch - restore backup!"); return; }
+    $("hexView").textContent=toHex(again,64);
+    STATE.origU8=again; STATE.parsed=v;
+    log(sl,"DONE: written + verified by re-reading from IndexedDB.\nNow reload the game (game.html) to confirm it loads your edited save.");
+  }catch(e){ log(sl,"WRITE FAILED: "+e.message+" - restore your .bin backup."); }
+};
+</script>
+</body>
+</html>
