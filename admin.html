@@ -74,13 +74,11 @@
   async function unlock(){
     KEY=$('akey').value.trim(); if(!KEY){L($('klog'),'Enter the admin key.');return;}
     L($('klog'),'Connecting...');
-    try{
-      const cfg=await GD.loadConfig();
-      if(!cfg || !(cfg.tunnels||[]).length){L($('klog'),'config.json has no tunnel URLs. Open admin.html from your SITE url (not a local file).');return;}
-    }catch(e){L($('klog'),'Cannot read config.json - open admin.html via your website URL (https://...), NOT as a local file. ('+(e&&e.message)+')');return;}
+    try{ await GD.loadConfig(); }
+    catch(e){ L($('klog'),'Cannot read config.json - open admin.html via your website URL (https://...), NOT as a local file. ('+(e&&e.message||'')+')'); return; }
     try{
       const base=await GD.pickBase();
-      if(!base){L($('klog'),'No tunnel reachable. Is the server (python backend.py) running?');return;}
+      if(!base){L($('klog'),'No tunnel reachable. Is the server (python backend.py) running, and has it pushed config.json?');return;}
       const r=await GD.api('/api/admin/announcements',{headers:headers()});
       if(r.status===401){L($('klog'),'Wrong admin key.');return;}
       if(!r.ok){L($('klog'),'Server error '+r.status);return;}

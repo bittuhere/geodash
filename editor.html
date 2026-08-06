@@ -119,8 +119,20 @@
     <h2><span class="step">#</span> Hex preview (first bytes)</h2>
     <div class="hex" id="hexView"></div>
   </div>
+
+  <!-- DIAGNOSTICS -->
+  <div class="card">
+    <h2><span class="step">D</span> Diagnostics (perfects first-load)</h2>
+    <div class="row">
+      <button id="credBtn" class="ghost">Download credentials.json</button>
+      <button id="testBtn" class="gold">Create test save (Stereo 16%)</button>
+    </div>
+    <p class="muted" style="margin-top:3%"><b>credentials.json</b> dumps the EXACT structure of your real game save (header bytes, entry order/types/prefix lengths) so the first-load binary can be made byte-perfect. <b>Create test save</b> writes a fresh save at Unity's path with Stereo Madness = 16% to test whether a created save loads in the game.</p>
+    <div class="log" id="diagLog">Tip: play the game once first (so a save exists), then Download credentials.json and send it.</div>
+  </div>
 </div>
 
+<script src="app.js"></script>
 <script>
 "use strict";
 /* ============================================================
@@ -412,6 +424,46 @@ $("saveBtn").onclick=async()=>{
     STATE.origU8=again; STATE.parsed=v;
     log(sl,"DONE: written + verified by re-reading from IndexedDB.\nNow reload the game (game.html) to confirm it loads your edited save.");
   }catch(e){ log(sl,"WRITE FAILED: "+e.message+" - restore your .bin backup."); }
+};
+
+/* ---------- DIAGNOSTICS ---------- */
+$("credBtn").onclick=async()=>{
+  const dl=$("diagLog");
+  try{
+    const list=await listPP();
+    if(!list.length){ log(dl,"No save found. Play the game once first, or use 'Create test save'."); return; }
+    const item=list[0]; const u8=bytesOf(item.entry);
+    let parsed; try{ parsed=parsePrefs(u8); }catch(e){ log(dl,"Parse failed: "+e.message); return; }
+    const rt=roundTrip(u8);
+    const cred={
+      scanned_at:new Date().toISOString(),
+      idbfs_db:"/idbfs", store:"FILE_DATA",
+      prefs_path:item.key,
+      prefs_path_constant:(window.GD&&GD.PREFS_PATH)||null,
+      file_size:u8.length,
+      header_hex:toHex(u8,16).replace(/\s+/g," "),
+      header_bytes_8_to_15:Array.from(u8.slice(8,16)),
+      entry_count:parsed.entries.length,
+      tail_len:parsed.tail.length,
+      round_trip_byte_identical:rt.ok,
+      entries:parsed.entries.map(e=>({key:e.key,type:e.type,type_hex:"0x"+e.type.toString(16),prefix_len:(e.prefix?e.prefix.length:0),value_len:(function(){try{return te.encode(String(e.value)).length;}catch(_){return -1;}})(),value_first_120:String(e.value).slice(0,120)}))
+    };
+    download("credentials-"+Date.now()+".json",new Uint8Array(te.encode(JSON.stringify(cred,null,2))));
+    log(dl,"credentials.json downloaded ("+u8.length+" B, "+parsed.entries.length+" entries). Send it for analysis.");
+  }catch(e){ log(dl,"Error: "+e.message); }
+};
+$("testBtn").onclick=async()=>{
+  const dl=$("diagLog");
+  if(!(window.GD&&GD.DEFAULT_SCORES)){ log(dl,"app.js not loaded."); return; }
+  if(!confirm("Write a FRESH test save at Unity's path with Stereo Madness = 16%? (Tests whether a created save loads in the game.)"))return;
+  try{
+    const def=JSON.parse(JSON.stringify(GD.DEFAULT_SCORES));
+    const stereo=(def.PLAYER_DATA.leveldatas||[]).find(function(l){return l.id===0;});
+    if(stereo) stereo.normalMode=16;
+    const u8=GD.buildBinaryFromObject(def);
+    await GD.writePrefsAtPath(GD.PREFS_PATH,u8);
+    log(dl,"Test save written ("+u8.length+" B) at "+GD.PREFS_PATH+". Open the game - if Stereo shows 16%, created saves load = first-load solved.");
+  }catch(e){ log(dl,"Create failed: "+e.message); }
 };
 </script>
 </body>

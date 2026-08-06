@@ -94,6 +94,7 @@
 
     /* ---- boot: is there a valid session? ---- */
     (async function(){
+      if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js').catch(function () {}); }
       if (new URLSearchParams(location.search).get('reset') !== null) {
         try { await GD.wipeLocalSave(); } catch (e) {}
         try { localStorage.clear(); } catch (e) {}

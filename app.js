@@ -206,6 +206,18 @@
     (((out.PLAYER_DATA || {}).leveldatas) || []).forEach(function (l) { const c = cml['l' + l.id]; if (c) { l.normalMode = _max(l.normalMode, c.normalMode); l.practiceMode = _max(l.practiceMode, c.practiceMode); l.totalAttempt = _max(l.totalAttempt, c.totalAttempt); l.totalJump = _max(l.totalJump, c.totalJump); l.coin = _max(l.coin, c.coin); } });
     return out;
   }
+  function applyCloud(cloud, local) {
+    /* Overwrite local's progress with cloud's values - used when a DIFFERENT user
+       logs in on a shared device. Keeps the real binary structure; does NOT max. */
+    const out = JSON.parse(JSON.stringify(local || {}));
+    const ci = cloud || {};
+    const cm = {}; (((ci.GAME_DATA || {}).starData) || []).forEach(function (s) { if (s && s.id != null) cm['s' + s.id] = s; });
+    (((out.GAME_DATA || {}).starData) || []).forEach(function (s) { if (s && cm['s' + s.id]) s.parameter = (cm['s' + s.id].parameter | 0); });
+    const cml = {}; (((ci.PLAYER_DATA || {}).leveldatas) || []).forEach(function (l) { if (l && l.id != null) cml['l' + l.id] = l; });
+    (((out.PLAYER_DATA || {}).leveldatas) || []).forEach(function (l) { const c = cml['l' + l.id]; if (c) { l.normalMode = (c.normalMode | 0); l.practiceMode = (c.practiceMode | 0); l.totalAttempt = (c.totalAttempt | 0); l.totalJump = (c.totalJump | 0); l.coin = (c.coin | 0); } });
+    return out;
+  }
+
   function scoresEmpty(s) {
     if (!s) return true;
     const st = ((s.GAME_DATA || {}).starData) || [];
@@ -248,6 +260,12 @@
     await new Promise(function(res, rej){ const tx = db.transaction('FILE_DATA','readwrite'); tx.objectStore('FILE_DATA').put(node, path); tx.oncomplete = function(){ res(); }; tx.onerror = function(){ rej(tx.error); }; });
     db.close();
   }
+  async function writePrefsAtPath(fullPath, u8){
+    /* Create the idbfs directory entries + write a PlayerPrefs file at fullPath. */
+    const parts = fullPath.split('/').filter(Boolean); let cur = '';
+    for (let i = 0; i < parts.length - 1; i++) { cur += '/' + parts[i]; await idbPutNode(cur, {timestamp:new Date(), mode:0o040777, contents:null}); }
+    await idbPutNode(fullPath, {timestamp:new Date(), mode:0o100666, contents: new Uint8Array(u8)});
+  }
   async function ensureLocal(){
     /* Fresh device: write a cloud-merged save to Unity's PlayerPrefs path BEFORE it
        loads, so the player sees their progress on the very first load (no reload).
@@ -261,9 +279,7 @@
       let u8;
       try { u8 = buildBinaryFromObject(merged); if (canon(prefsToObject(parsePrefs(u8))) !== canon(merged)) return false; }
       catch (e) { return false; }
-      const parts = PREFS_PATH.split('/').filter(Boolean); let cur = '';
-      for (let i = 0; i < parts.length - 1; i++) { cur += '/' + parts[i]; await idbPutNode(cur, {timestamp:new Date(), mode:0o040777, contents:null}); }
-      await idbPutNode(PREFS_PATH, {timestamp:new Date(), mode:0o100666, contents: new Uint8Array(u8)});
+      await writePrefsAtPath(PREFS_PATH, u8);
       return true;
     } catch (e) { return false; }
   }
@@ -273,8 +289,8 @@
     kvGet: kvGet, kvSet: kvSet, kvDel: kvDel,
     parsePrefs: parsePrefs, serializePrefs: serializePrefs,
     readLocalSave: readLocalSave, writeLocalSave: writeLocalSave, wipeLocalSave: wipeLocalSave,
-    mergeScores: mergeScores, scoresEmpty: scoresEmpty, canon: canon,
-    ensureLocal: ensureLocal, buildBinaryFromObject: buildBinaryFromObject, PREFS_PATH: PREFS_PATH,
+    mergeScores: mergeScores, scoresEmpty: scoresEmpty, canon: canon, applyCloud: applyCloud,
+    ensureLocal: ensureLocal, buildBinaryFromObject: buildBinaryFromObject, writePrefsAtPath: writePrefsAtPath, DEFAULT_SCORES: DEFAULT_SCORES, PREFS_PATH: PREFS_PATH,
     prefsToObject: prefsToObject, objectToPrefs: objectToPrefs,
     lastSeenText: lastSeenText, statusText: statusText, animateCount: animateCount
   };

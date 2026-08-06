@@ -60,7 +60,9 @@
   (function () {
     'use strict';
 
-    let username = '', hadLocal = false;   /* resolved from the session store in init() (no URL param) */
+    if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js').catch(function () {}); }
+
+    let username = '', hadLocal = false, syncMode = 'merge';   /* resolved from the session store in init() (no URL param) */
 
     /* ---- refs ---- */
     const loader  = document.getElementById('loader');
@@ -95,34 +97,26 @@
     }
 
     /* ---- cross-device restore BEFORE Unity loads (no reload; preserves real save) ---- */
-    async function restoreBeforeLoad() {
+    async function restoreBeforeLoad(mode) {
       try {
         const local = await GD.readLocalSave();
         hadLocal = !!local;
         const r = await GD.api('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'playing' }) });
         const cloud = (await r.json()).scores;
-        if (!cloud) return;
-        if (local) {
-          const merged = GD.mergeScores(cloud, local.obj);   // base = LOCAL real structure
-          if (GD.canon(merged) !== GD.canon(local.obj)) {
-            // SAFETY: only write if the new binary round-trips back to exactly `merged`.
-            // If it doesn't, we skip the write entirely - never risk a corrupt save.
-            let safe = false;
-            try {
-              const u8 = GD.serializePrefs(GD.objectToPrefs(merged, local.parsed));
-              const reobj = GD.prefsToObject(GD.parsePrefs(u8));
-              safe = (GD.canon(reobj) === GD.canon(merged));
-            } catch (e) { safe = false; }
-            if (safe) {
-              setLoad(0.06, 'Syncing Progress', 'Restoring your save\u{2026}');
-              local.obj = merged;
-              await GD.writeLocalSave(local);                // Unity reads this on load
-            } else {
-              console.log('restore skipped: round-trip self-check failed (no write)');
-            }
-          } else if (GD.canon(merged) !== GD.canon(cloud)) {
-            await GD.api('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scores: merged }) });
+        if (!cloud || !local) return;
+        /* merge = same user (multi-device, take max) | replace = different user on shared device */
+        const merged = mode === 'replace' ? GD.applyCloud(cloud, local.obj) : GD.mergeScores(cloud, local.obj);
+        if (GD.canon(merged) !== GD.canon(local.obj)) {
+          let safe = false;
+          try { const u8 = GD.serializePrefs(GD.objectToPrefs(merged, local.parsed)); safe = (GD.canon(GD.prefsToObject(GD.parsePrefs(u8))) === GD.canon(merged)); } catch (e) { safe = false; }
+          if (safe) {
+            setLoad(0.06, 'Syncing Progress', 'Restoring your save\u{2026}');
+            local.obj = merged;
+            await GD.writeLocalSave(local);
+            await GD.kvSet('local_owner', username);
           }
+        } else if (mode === 'merge' && GD.canon(merged) !== GD.canon(cloud)) {
+          await GD.api('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scores: merged }) });
         }
       } catch (e) { /* non-fatal - game still loads */ }
     }
@@ -137,7 +131,7 @@
         const r = await GD.api('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'playing' }) });
         const cloud = (await r.json()).scores;
         if (!cloud) return false;
-        const merged = GD.mergeScores(cloud, local.obj);
+        const merged = syncMode === 'replace' ? GD.applyCloud(cloud, local.obj) : GD.mergeScores(cloud, local.obj);
         if (GD.canon(merged) === GD.canon(local.obj)) return false;   // nothing to restore
         let safe = false;
         try { const u8 = GD.serializePrefs(GD.objectToPrefs(merged, local.parsed)); safe = (GD.canon(GD.prefsToObject(GD.parsePrefs(u8))) === GD.canon(merged)); } catch (e) { safe = false; }
@@ -146,9 +140,24 @@
         setLoad(0.06, 'Restoring Progress', 'Syncing your save\u{2026}');
         local.obj = merged;
         await GD.writeLocalSave(local);
+        await GD.kvSet('local_owner', username);
         location.reload();
         return true;
       } catch (e) { return false; }
+    }
+
+    /* Cache audio BEFORE the big Unity build -> fast audio even on a slow upload. */
+    async function prefetchAudio() {
+      try {
+        const r = await GD.api('/api/assets');
+        const d = await r.json();
+        const files = (d.streaming || []);
+        if (!files.length) return;
+        setLoad(0.05, 'Loading Audio', 'Caching sounds\u{2026}');
+        await Promise.all(files.map(function (f) {
+          return fetch(TUNNEL + '/StreamingAssets/' + encodeURI(f)).catch(function () {});
+        }));
+      } catch (e) { /* non-fatal - the service worker still caches on demand */ }
     }
 
     /* Full manual reset only (the "stuck? reset" link / ?reset). We NEVER auto-wipe
@@ -174,8 +183,11 @@
       TUNNEL = await GD.pickBase();                /* health-checks, picks best reachable */
       if (!TUNNEL) { fail('No reachable tunnel. The server may be offline \u{2014} try again shortly.'); return; }
       setLoad(0.04, 'Connecting to Server', 'Reaching the tunnel\u{2026}');
-      await GD.ensureLocal();                      /* fresh device: pre-create save at Unity's path (no reload) */
-      await restoreBeforeLoad();                   /* merge cloud into local BEFORE Unity reads it */
+      if (await GD.ensureLocal()) { await GD.kvSet('local_owner', username); }   /* fresh device: pre-create save */
+      const owner = await GD.kvGet('local_owner');
+      syncMode = (owner && owner === username) ? 'merge' : 'replace';             /* same user -> merge, other -> replace */
+      await restoreBeforeLoad(syncMode);                                          /* sync BEFORE Unity reads it */
+      await prefetchAudio();                                                      /* cache audio before the big Unity build */
       loadUnity();
       /* status = playing while in-game (lightweight, 30s) */
       setInterval(() => GD.api('/api/heartbeat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'playing' }) }).catch(() => {}), 30000);
