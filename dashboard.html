@@ -34,6 +34,7 @@
   @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   /* dashboard */
   .hero{text-align:center;padding:5% 2% 3%}
+  .greet{color:var(--text-dim);font-size:var(--fs-small);letter-spacing:.14em;text-transform:uppercase;margin-bottom:3%}
   .hero .gd{font-size:clamp(1.7rem,5vw,2.3rem);font-weight:900;line-height:1}
   .hero .gd .a{color:var(--cyan)}.hero .gd .b{color:var(--gold)}
   .play{margin:4% auto 2%;display:inline-flex}
@@ -177,6 +178,7 @@
 
   <section class="view active" id="v-dash">
     <div class="hero">
+      <div class="greet" id="greet"></div>
       <div class="gd"><span class="a">GEOMETRY</span> <span class="b">DASH</span></div>
       <a class="btn btn--gold play" href="game.html">&#9654; Play Now</a>
     </div>
@@ -272,6 +274,7 @@
   function renderDashboard(){
     const sc=S.scores||{}; const sd=(sc.GAME_DATA||{}).starData||[];
     const jumps=star(sd,0),att=star(sd,1),done=star(sd,5);
+    $('greet').textContent='Welcome back, '+(S.me.display||S.me.username);
     $('statGrid').innerHTML=
       '<div class="card stat stat--cyan"><span class="ico">&#129432;</span><div class="num">0</div><div class="lbl">Total Jumps</div></div>'+
       '<div class="card stat stat--gold"><span class="ico">&#127919;</span><div class="num">0</div><div class="lbl">Attempts</div></div>'+
@@ -441,9 +444,7 @@
   function drawerAct(a){ if(a==='profile')openMyProfile(); else if(a==='password')openPassword(); else if(a==='announce')openAnnouncements(); else if(a==='logout')doLogout(); }
   async function doLogout(){
     try{ await GD.api('/api/logout',{method:'POST'}); }catch(e){}
-    try{ await GD.wipeLocalSave(); }catch(e){}      /* clear this device's game save */
-    try{ await GD.kvDel('token'); }catch(e){}
-    try{ localStorage.clear(); }catch(e){}
+    try{ await GD.kvDel('token'); }catch(e){}        /* keep idbfs + local_owner so the next login restores fast (no 0%) */
     location.href='index.html';
   }
 
